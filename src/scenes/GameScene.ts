@@ -103,6 +103,8 @@ export class GameScene extends Phaser.Scene {
 
   // Placement preview
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
+  private previewRangeGraphics: Phaser.GameObjects.Graphics | null = null;
+  private hoverRangeGraphics: Phaser.GameObjects.Graphics | null = null;
 
   // Music
   private currentMusic: Phaser.Sound.BaseSound | null = null;
@@ -326,9 +328,14 @@ export class GameScene extends Phaser.Scene {
           // Preview on hover
           zone.on('pointerover', () => {
             this.showPlacementPreview(world.x, world.y, this.towerSprites.has(`${x},${y}`));
+            // Show range on hover for placed units (when global ranges are off)
+            if (!this.showRanges) {
+              this.showHoverRange(x, y);
+            }
           });
           zone.on('pointerout', () => {
             this.clearPlacementPreview();
+            this.clearHoverRange();
           });
 
           zone.on('pointerdown', () => {
@@ -1109,6 +1116,8 @@ export class GameScene extends Phaser.Scene {
     this.selectedCharacterId = null;
     this.hideTroopTooltip();
     this.hideTowerTooltip();
+    this.clearPlacementPreview();
+    this.clearHoverRange();
     // Clear arrays
     this.activeEnemies = [];
     this.spawnQueue = [];
@@ -1867,16 +1876,23 @@ export class GameScene extends Phaser.Scene {
 
     let textureKey: string | null = null;
     let scale = 1;
+    let rangePx = 0;
+    let rangeColor = 0x44aaff;
 
     if (this.selectedCharacterId) {
       const charInst = this.characterManager.getOwnedCharacter(this.selectedCharacterId);
       if (charInst) {
         textureKey = this.textures.exists(charInst.data.id) ? charInst.data.id : `troop_${charInst.data.type}`;
         if (hasTower) scale = 0.7;
+        const stats = charInst.getFinalStats();
+        rangePx = stats.range * TILE_SIZE;
+        rangeColor = 0x44ff44;
       }
     } else if (this.selectedTowerIndex >= 0) {
       const tower = AVAILABLE_TOWERS[this.selectedTowerIndex];
       textureKey = tower.id;
+      rangePx = tower.range * TILE_SIZE;
+      rangeColor = 0x44aaff;
     }
 
     if (textureKey && this.textures.exists(textureKey)) {
@@ -1885,12 +1901,67 @@ export class GameScene extends Phaser.Scene {
         .setAlpha(0.5)
         .setScale(scale);
     }
+
+    // Show range preview circle
+    if (rangePx > 0) {
+      if (!this.previewRangeGraphics) {
+        this.previewRangeGraphics = this.add.graphics().setDepth(49);
+      }
+      this.previewRangeGraphics.clear();
+      this.previewRangeGraphics.lineStyle(2, rangeColor, 0.6);
+      this.previewRangeGraphics.fillStyle(rangeColor, 0.1);
+      this.previewRangeGraphics.fillCircle(wx, wy, rangePx);
+      this.previewRangeGraphics.strokeCircle(wx, wy, rangePx);
+    }
   }
 
   private clearPlacementPreview(): void {
     if (this.previewSprite) {
       this.previewSprite.destroy();
       this.previewSprite = null;
+    }
+    if (this.previewRangeGraphics) {
+      this.previewRangeGraphics.clear();
+    }
+  }
+
+  private showHoverRange(gx: number, gy: number): void {
+    this.clearHoverRange();
+
+    // Check for tower at this position
+    const tower = this.defenseSystem.getTowers().find(t => t.gridX === gx && t.gridY === gy);
+    if (tower) {
+      if (!this.hoverRangeGraphics) {
+        this.hoverRangeGraphics = this.add.graphics().setDepth(4);
+      }
+      const rangePx = tower.data.range * TILE_SIZE;
+      this.hoverRangeGraphics.lineStyle(2, 0x44aaff, 0.6);
+      this.hoverRangeGraphics.fillStyle(0x44aaff, 0.1);
+      this.hoverRangeGraphics.fillCircle(tower.worldX, tower.worldY, rangePx);
+      this.hoverRangeGraphics.strokeCircle(tower.worldX, tower.worldY, rangePx);
+      return;
+    }
+
+    // Check for troop at this position
+    if (this.troopSystem) {
+      const troop = this.troopSystem.getTroops().find(t => t.homeGridX === gx && t.homeGridY === gy);
+      if (troop) {
+        if (!this.hoverRangeGraphics) {
+          this.hoverRangeGraphics = this.add.graphics().setDepth(4);
+        }
+        const stats = troop.character.getFinalStats();
+        const rangePx = stats.range * TILE_SIZE;
+        this.hoverRangeGraphics.lineStyle(2, 0x44ff44, 0.6);
+        this.hoverRangeGraphics.fillStyle(0x44ff44, 0.1);
+        this.hoverRangeGraphics.fillCircle(troop.homeWorldX, troop.homeWorldY, rangePx);
+        this.hoverRangeGraphics.strokeCircle(troop.homeWorldX, troop.homeWorldY, rangePx);
+      }
+    }
+  }
+
+  private clearHoverRange(): void {
+    if (this.hoverRangeGraphics) {
+      this.hoverRangeGraphics.clear();
     }
   }
 
