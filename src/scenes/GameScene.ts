@@ -242,16 +242,23 @@ export class GameScene extends Phaser.Scene {
     this.tileSprites.push(wallSprite);
   }
 
+  private isTouch(): boolean {
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  }
+
   private createUI(): void {
     this.hud = new HUD(this);
     this.menuPanel = new MenuPanel(this);
     this.dungeonUI = new DungeonUI(this);
     this.collectionUI = new CollectionUI(this);
 
+    const touch = this.isTouch();
+
     // Menu button (☰) for mobile - replaces ESC key
+    const menuBtnSize = touch ? '22px' : '18px';
     const menuBtn = this.add.text(GAME_WIDTH - 30, 14, '☰', {
-      fontSize: '18px', color: '#aaaaaa', fontFamily: 'monospace',
-      backgroundColor: '#222233', padding: { x: 6, y: 2 },
+      fontSize: menuBtnSize, color: '#aaaaaa', fontFamily: 'monospace',
+      backgroundColor: '#222233', padding: { x: 8, y: 4 },
     }).setOrigin(0.5, 0).setDepth(250).setInteractive();
     menuBtn.on('pointerdown', () => {
       this.playSfx('sfx_click');
@@ -265,25 +272,31 @@ export class GameScene extends Phaser.Scene {
     this.createTroopButton();
 
     // Tower selection buttons at bottom
-    const btnY = 560;
+    const btnH = touch ? 36 : 30;
+    const btnW = touch ? 110 : 100;
+    const fontSize = touch ? '10px' : '9px';
+    const btnY = 576 - btnH / 2 - 2; // stick to bottom edge
+    const btnSpacing = touch ? 118 : 120;
+    const btnStartX = touch ? 190 : 200;
+
     AVAILABLE_TOWERS.forEach((tower, i) => {
-      const btnX = 200 + i * 120;
+      const btnX = btnStartX + i * btnSpacing;
       const container = this.add.container(btnX, btnY).setDepth(100);
 
       const bg = this.add.graphics();
       bg.fillStyle(0x333333, 0.9);
-      bg.fillRect(-50, -15, 100, 30);
+      bg.fillRect(-btnW / 2, -btnH / 2, btnW, btnH);
       container.add(bg);
 
       const txt = this.add.text(0, 0, `${tower.name}\n$${tower.cost}`, {
-        fontSize: '9px', color: '#ffffff', fontFamily: 'monospace', align: 'center',
+        fontSize, color: '#ffffff', fontFamily: 'monospace', align: 'center',
       }).setOrigin(0.5);
       container.add(txt);
 
       const border = this.add.graphics();
       container.add(border);
 
-      const hitArea = this.add.rectangle(0, 0, 100, 30).setInteractive();
+      const hitArea = this.add.rectangle(0, 0, btnW, btnH).setInteractive();
       hitArea.setAlpha(0.01);
       hitArea.on('pointerdown', () => {
         if (this.menuPanel.isVisible()) return;
@@ -296,15 +309,17 @@ export class GameScene extends Phaser.Scene {
       hitArea.on('pointerover', () => {
         border.clear();
         border.lineStyle(2, 0x888888);
-        border.strokeRect(-50, -15, 100, 30);
-        this.hideTowerTooltip();
-        this.towerTooltipTimer = this.time.delayedCall(1500, () => {
-          this.showTowerTooltip(i, btnX, btnY - 15);
-        });
+        border.strokeRect(-btnW / 2, -btnH / 2, btnW, btnH);
+        if (!touch) {
+          this.hideTowerTooltip();
+          this.towerTooltipTimer = this.time.delayedCall(1500, () => {
+            this.showTowerTooltip(i, btnX, btnY - btnH / 2);
+          });
+        }
       });
       hitArea.on('pointerout', () => {
         border.clear();
-        this.hideTowerTooltip();
+        if (!touch) this.hideTowerTooltip();
       });
       container.add(hitArea);
       this.towerButtons.push(container);
@@ -1300,7 +1315,11 @@ export class GameScene extends Phaser.Scene {
 
   // ---- Range Toggle ----
   private createRangeToggleButton(): void {
-    const cx = 900, cy = 560, bw = 100, bh = 24;
+    const touch = this.isTouch();
+    const bw = touch ? 110 : 100;
+    const bh = touch ? 36 : 24;
+    const cx = touch ? 910 : 900;
+    const cy = 576 - bh / 2 - 2;
     const cont = this.add.container(cx, cy).setDepth(100);
 
     const bg = this.add.graphics();
@@ -1309,7 +1328,7 @@ export class GameScene extends Phaser.Scene {
     cont.add(bg);
 
     this.rangeToggleBtn = this.add.text(0, 0, '◎ Rangos: OFF', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: touch ? '11px' : '11px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5);
     cont.add(this.rangeToggleBtn);
 
@@ -1342,7 +1361,11 @@ export class GameScene extends Phaser.Scene {
   private speedBorder: Phaser.GameObjects.Graphics | null = null;
 
   private createSpeedButton(): void {
-    const cx = 790, cy = 560, bw = 80, bh = 24;
+    const touch = this.isTouch();
+    const bw = touch ? 90 : 80;
+    const bh = touch ? 36 : 24;
+    const cx = touch ? 800 : 790;
+    const cy = 576 - bh / 2 - 2;
     const cont = this.add.container(cx, cy).setDepth(100);
 
     this.speedBg = this.add.graphics();
@@ -1443,30 +1466,33 @@ export class GameScene extends Phaser.Scene {
 
   // ---- Troop UI & Rendering ----
   private createTroopButton(): void {
+    const touch = this.isTouch();
+    const btnW = touch ? 110 : 100;
+    const btnH = touch ? 36 : 30;
     const btnX = 70;
-    const btnY = 560;
+    const btnY = 576 - btnH / 2 - 2;
     const container = this.add.container(btnX, btnY).setDepth(100);
 
     const bg = this.add.graphics();
     bg.fillStyle(0x335533, 0.9);
-    bg.fillRect(-50, -15, 100, 30);
+    bg.fillRect(-btnW / 2, -btnH / 2, btnW, btnH);
     bg.lineStyle(1, 0x44aa44);
-    bg.strokeRect(-50, -15, 100, 30);
+    bg.strokeRect(-btnW / 2, -btnH / 2, btnW, btnH);
     container.add(bg);
 
     const txt = this.add.text(0, 0, 'Tropas', {
-      fontSize: '11px', color: '#88ff88', fontFamily: 'monospace',
+      fontSize: touch ? '12px' : '11px', color: '#88ff88', fontFamily: 'monospace',
     }).setOrigin(0.5);
     container.add(txt);
 
     const border = this.add.graphics();
     container.add(border);
 
-    const hitArea = this.add.rectangle(0, 0, 100, 30).setInteractive().setAlpha(0.01);
+    const hitArea = this.add.rectangle(0, 0, btnW, btnH).setInteractive().setAlpha(0.01);
     hitArea.on('pointerover', () => {
       border.clear();
       border.lineStyle(2, 0x88ff88);
-      border.strokeRect(-50, -15, 100, 30);
+      border.strokeRect(-btnW / 2, -btnH / 2, btnW, btnH);
     });
     hitArea.on('pointerout', () => {
       border.clear();

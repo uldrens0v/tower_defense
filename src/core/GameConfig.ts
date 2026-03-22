@@ -24,13 +24,16 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     expandParent: true,
+    width: GAME_WIDTH,
+    height: GAME_HEIGHT,
+    min: { width: 320, height: 180 },
   },
   render: {
     pixelArt: true,
     antialias: false,
   },
   input: {
-    activePointers: 2,
+    activePointers: 3,
     touch: { capture: true },
   },
 };
