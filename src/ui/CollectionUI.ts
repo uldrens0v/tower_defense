@@ -15,7 +15,7 @@ export class CollectionUI {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    this.container = scene.add.container(0, 0).setDepth(200).setVisible(false);
+    this.container = scene.add.container(0, 0).setDepth(260).setVisible(false);
   }
 
   show(
@@ -48,7 +48,7 @@ export class CollectionUI {
     // Stats summary
     const totalOwned = allCharacters.filter(c => ownedIds.has(c.id)).length;
     const summary = this.scene.add.text(GAME_WIDTH / 2, 36, `${totalOwned} / ${allCharacters.length} personajes desbloqueados`, {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(summary);
 
@@ -90,7 +90,7 @@ export class CollectionUI {
 
       // Name
       const name = this.scene.add.text(x + cardW / 2, y + 16, owned ? char.name : '???', {
-        fontSize: '10px',
+        fontSize: '13px',
         color: owned ? '#ffffff' : '#555555',
         fontFamily: 'monospace',
       }).setOrigin(0.5, 0);
@@ -153,7 +153,7 @@ export class CollectionUI {
       this.detailContainer.destroy();
     }
 
-    this.detailContainer = this.scene.add.container(0, 0).setDepth(201);
+    this.detailContainer = this.scene.add.container(0, 0).setDepth(261);
 
     const panelX = 440;
     const panelY = 55;
@@ -181,7 +181,7 @@ export class CollectionUI {
 
     // Character sprite
     const spriteKey = this.scene.textures.exists(char.id) ? char.id : `troop_${char.type}`;
-    const charSprite = this.scene.add.sprite(cx, ty + 20, spriteKey).setScale(1.5).setDepth(202);
+    const charSprite = this.scene.add.sprite(cx, ty + 20, spriteKey).setScale(1.5).setDepth(262);
     dc.add(charSprite);
     ty += 46;
 
@@ -195,7 +195,7 @@ export class CollectionUI {
     // Rarity + type
     const typeLabels: Record<string, string> = { ground: 'Tierra', aerial: 'Aéreo', support: 'Soporte', commander: 'Comandante' };
     const subText = this.scene.add.text(cx, ty, `${config.label} · ${typeLabels[char.type] ?? char.type}`, {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     dc.add(subText);
     ty += 20;
@@ -210,7 +210,7 @@ export class CollectionUI {
         ? `XP: ${instance.currentXP} / ${instance.xpToNextLevel()}`
         : 'Nivel Máximo';
       const levelLine = this.scene.add.text(cx, ty, `${lvlText}  ·  ${xpText}`, {
-        fontSize: '11px', color: '#88cc88', fontFamily: 'monospace',
+        fontSize: '14px', color: '#88cc88', fontFamily: 'monospace',
       }).setOrigin(0.5, 0);
       dc.add(levelLine);
       ty += 16;
@@ -235,7 +235,7 @@ export class CollectionUI {
 
     // ── Stats ──
     const statsTitle = this.scene.add.text(panelX + 20, ty, '── Estadísticas Base ──', {
-      fontSize: '11px', color: '#ffcc00', fontFamily: 'monospace',
+      fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace',
     });
     dc.add(statsTitle);
     ty += 18;
@@ -269,11 +269,11 @@ export class CollectionUI {
         : String(stats[key]);
 
       const iconText = this.scene.add.text(sx, sy, icon, {
-        fontSize: '11px', fontFamily: 'monospace',
+        fontSize: '14px', fontFamily: 'monospace',
       });
       dc.add(iconText);
       const statLine = this.scene.add.text(sx + 18, sy, `${label}: ${val}`, {
-        fontSize: '11px', color: '#cccccc', fontFamily: 'monospace',
+        fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
       });
       dc.add(statLine);
     });
@@ -281,7 +281,7 @@ export class CollectionUI {
 
     // ── Growth per level ──
     const growthTitle = this.scene.add.text(panelX + 20, ty, '── Crecimiento por Nivel ──', {
-      fontSize: '11px', color: '#88aaff', fontFamily: 'monospace',
+      fontSize: '14px', color: '#88aaff', fontFamily: 'monospace',
     });
     dc.add(growthTitle);
     ty += 18;
@@ -297,7 +297,7 @@ export class CollectionUI {
     ].join('  ·  ');
 
     const growthLine = this.scene.add.text(panelX + 30, ty, growthStr, {
-      fontSize: '9px', color: '#8888aa', fontFamily: 'monospace',
+      fontSize: '12px', color: '#8888aa', fontFamily: 'monospace',
       wordWrap: { width: panelW - 60 },
     });
     dc.add(growthLine);
@@ -306,13 +306,13 @@ export class CollectionUI {
     // ── Passive Skill ──
     if (char.passiveSkill) {
       const passiveTitle = this.scene.add.text(panelX + 20, ty, '── Habilidad Pasiva ──', {
-        fontSize: '11px', color: '#44ffaa', fontFamily: 'monospace',
+        fontSize: '14px', color: '#44ffaa', fontFamily: 'monospace',
       });
       dc.add(passiveTitle);
       ty += 18;
 
       const passiveLine = this.scene.add.text(panelX + 30, ty, `${char.passiveSkill.name}: ${char.passiveSkill.description}`, {
-        fontSize: '10px', color: '#aaddcc', fontFamily: 'monospace',
+        fontSize: '13px', color: '#aaddcc', fontFamily: 'monospace',
         wordWrap: { width: panelW - 60 },
       });
       dc.add(passiveLine);
@@ -322,7 +322,7 @@ export class CollectionUI {
     // ── Ultimate Skill ──
     if (char.ultimateSkill) {
       const ultTitle = this.scene.add.text(panelX + 20, ty, '── Habilidad Definitiva ──', {
-        fontSize: '11px', color: '#ff8844', fontFamily: 'monospace',
+        fontSize: '14px', color: '#ff8844', fontFamily: 'monospace',
       });
       dc.add(ultTitle);
       ty += 18;
@@ -334,7 +334,7 @@ export class CollectionUI {
       ].join('\n');
 
       const ultLine = this.scene.add.text(panelX + 30, ty, ultInfo, {
-        fontSize: '10px', color: '#ddaa88', fontFamily: 'monospace',
+        fontSize: '13px', color: '#ddaa88', fontFamily: 'monospace',
         wordWrap: { width: panelW - 60 },
       });
       dc.add(ultLine);
@@ -344,7 +344,7 @@ export class CollectionUI {
       const progress = this.ultimateProgress.get(char.id) ?? 0;
       if (char.requiredEquipment.length > 0) {
         const reqLabel = this.scene.add.text(panelX + 30, ty, `Equipo requerido: ${char.requiredEquipment.length} piezas (${Math.floor(progress * 100)}%)`, {
-          fontSize: '9px', color: '#aa8866', fontFamily: 'monospace',
+          fontSize: '12px', color: '#aa8866', fontFamily: 'monospace',
         });
         dc.add(reqLabel);
         ty += 14;
@@ -365,7 +365,7 @@ export class CollectionUI {
     // ── Equipment ──
     if (instance && instance.equipment.length > 0) {
       const eqTitle = this.scene.add.text(panelX + 20, ty, '── Equipo Actual ──', {
-        fontSize: '11px', color: '#ccaa44', fontFamily: 'monospace',
+        fontSize: '14px', color: '#ccaa44', fontFamily: 'monospace',
       });
       dc.add(eqTitle);
       ty += 18;
@@ -374,7 +374,7 @@ export class CollectionUI {
         const icon = eq.buffActive ? '✦' : '○';
         const color = eq.buffActive ? '#ffdd44' : '#666666';
         const eqLine = this.scene.add.text(panelX + 30, ty, `${icon} ${eq.itemId} ${eq.buffActive ? '(activo)' : '(inactivo)'}`, {
-          fontSize: '10px', color, fontFamily: 'monospace',
+          fontSize: '13px', color, fontFamily: 'monospace',
         });
         dc.add(eqLine);
         ty += 14;
@@ -384,7 +384,7 @@ export class CollectionUI {
     // Multiplier info
     ty = panelY + panelH - 22;
     const multText = this.scene.add.text(cx, ty, `Multiplicador de rareza: x${config.statMultiplier.toFixed(1)}`, {
-      fontSize: '9px', color: '#666666', fontFamily: 'monospace',
+      fontSize: '12px', color: '#666666', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     dc.add(multText);
   }

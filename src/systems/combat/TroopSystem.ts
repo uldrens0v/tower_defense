@@ -316,7 +316,7 @@ export class TroopSystem {
         y: troop.worldY,
         targetId: target.id,
         damage: finalDamage,
-        speed: 6 * TILE_SIZE,
+        speed: 18 * TILE_SIZE,
         troopId: troop.id,
       });
     }

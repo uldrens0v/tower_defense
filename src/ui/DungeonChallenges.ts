@@ -184,7 +184,7 @@ export class MathChallenge {
 
     // Instructions
     const inst = scene.add.text(GAME_WIDTH / 2, py + 34, 'Resuelve la operacion para abrir el cofre:', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(inst);
 
@@ -209,7 +209,7 @@ export class MathChallenge {
 
     // Warning
     const warning = scene.add.text(GAME_WIDTH / 2, py + 136, 'Respuesta incorrecta = -10 HP Muralla', {
-      fontSize: '9px', color: '#ff6644', fontFamily: 'monospace',
+      fontSize: '12px', color: '#ff6644', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(warning);
 
@@ -239,7 +239,7 @@ export class MathChallenge {
         'OK ✓', () => this.onVirtualKey('Enter'), 0x335533, '#88ff88', '14px');
     } else {
       const hint = scene.add.text(GAME_WIDTH / 2, py + 155, 'Escribe el resultado y pulsa ENTER', {
-        fontSize: '10px', color: '#666666', fontFamily: 'monospace',
+        fontSize: '13px', color: '#666666', fontFamily: 'monospace',
       }).setOrigin(0.5, 0);
       this.container.add(hint);
     }
@@ -456,7 +456,7 @@ export class TypingChallenge {
       });
     } else {
       const hint = scene.add.text(GAME_WIDTH / 2, py + panelH - 25, 'Escribe el texto exacto. Cada letra correcta cambia de color.', {
-        fontSize: '9px', color: '#555555', fontFamily: 'monospace',
+        fontSize: '12px', color: '#555555', fontFamily: 'monospace',
       }).setOrigin(0.5, 0);
       this.container.add(hint);
     }

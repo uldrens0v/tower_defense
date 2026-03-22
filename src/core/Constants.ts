@@ -1,5 +1,16 @@
 export const GAME_WIDTH = 1024;
-export const GAME_HEIGHT = 576;
+export const GAME_HEIGHT = 660;
 export const TILE_SIZE = 32;
-export const GRID_COLS = GAME_WIDTH / TILE_SIZE;
-export const GRID_ROWS = GAME_HEIGHT / TILE_SIZE;
+
+/** Vertical offset where the map/scenario starts (below the top HUD bar) */
+export const MAP_OFFSET_Y = 40;
+
+/** Map area dimensions (the actual playable grid) */
+export const MAP_WIDTH = 1024;   // 32 cols × 32px
+export const MAP_HEIGHT = 576;   // 18 rows × 32px
+
+/** Y position for bottom bar buttons (below the map) */
+export const BOTTOM_BAR_Y = MAP_OFFSET_Y + MAP_HEIGHT + 22; // 638
+
+export const GRID_COLS = MAP_WIDTH / TILE_SIZE;
+export const GRID_ROWS = MAP_HEIGHT / TILE_SIZE;

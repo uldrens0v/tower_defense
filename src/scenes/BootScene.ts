@@ -110,6 +110,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     this.createTroopSprites();
+    this.createTowerLevelVariants();
     this.scene.start('PreloadScene');
   }
 
@@ -196,5 +197,127 @@ export class BootScene extends Phaser.Scene {
     cG.fillCircle(22, 8, 2);                  // gem right
     cG.generateTexture('troop_commander', 32, 32);
     cG.destroy();
+  }
+
+  /**
+   * Generate recolored tower textures for each level.
+   * Level 1 uses the original texture. Levels 2-7 shift the hue.
+   * Texture keys: tower_arrow_lv1, tower_arrow_lv2, ... tower_arrow_lv7
+   */
+  private createTowerLevelVariants(): void {
+    const towerIds = ['tower_arrow', 'tower_cannon', 'tower_antiair', 'tower_magic'];
+
+    // Hue shifts in degrees for each level (level 1 = 0 = original)
+    const LEVEL_HUE_SHIFTS = [
+      0,    // Level 1: original color
+      200,  // Level 2: blue
+      270,  // Level 3: purple
+      50,   // Level 4: gold/yellow
+      160,  // Level 5: cyan/teal
+      0,    // Level 6: crimson (shift + saturation boost)
+      300,  // Level 7: magenta/legendary
+    ];
+
+    for (const towerId of towerIds) {
+      if (!this.textures.exists(towerId)) continue;
+
+      const sourceImage = this.textures.get(towerId).getSourceImage() as HTMLImageElement;
+      const w = sourceImage.width;
+      const h = sourceImage.height;
+
+      for (let lv = 0; lv < LEVEL_HUE_SHIFTS.length; lv++) {
+        const key = `${towerId}_lv${lv + 1}`;
+
+        if (lv === 0) {
+          // Level 1: just alias the original texture
+          // Create a copy so it's consistent
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(sourceImage, 0, 0);
+          this.textures.addCanvas(key, canvas);
+          continue;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(sourceImage, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        const hueShift = LEVEL_HUE_SHIFTS[lv];
+
+        // Level 6 special: increase saturation + slight red push
+        const satBoost = lv === 5 ? 1.4 : (lv === 6 ? 1.2 : 1.0);
+        const lightBoost = lv === 6 ? 1.15 : 1.0; // legendary glow
+
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3];
+          if (a === 0) continue; // skip transparent
+
+          const r = data[i] / 255;
+          const g = data[i + 1] / 255;
+          const b = data[i + 2] / 255;
+
+          // Convert RGB to HSL
+          const max = Math.max(r, g, b);
+          const min = Math.min(r, g, b);
+          const l = (max + min) / 2;
+
+          // Only recolor pixels that have some saturation (not gray/white/black)
+          const delta = max - min;
+          if (delta < 0.08) continue; // skip grays
+
+          let hue = 0;
+          const sat = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+
+          if (max === r) hue = ((g - b) / delta + (g < b ? 6 : 0)) * 60;
+          else if (max === g) hue = ((b - r) / delta + 2) * 60;
+          else hue = ((r - g) / delta + 4) * 60;
+
+          // Apply hue shift
+          let newHue = (hue + hueShift) % 360;
+          if (newHue < 0) newHue += 360;
+          const newSat = Math.min(1, sat * satBoost);
+          const newL = Math.min(1, l * lightBoost);
+
+          // Convert HSL back to RGB
+          const [nr, ng, nb] = BootScene.hslToRgb(newHue / 360, newSat, newL);
+          data[i] = nr;
+          data[i + 1] = ng;
+          data[i + 2] = nb;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        this.textures.addCanvas(key, canvas);
+      }
+    }
+  }
+
+  private static hslToRgb(h: number, s: number, l: number): [number, number, number] {
+    if (s === 0) {
+      const v = Math.round(l * 255);
+      return [v, v, v];
+    }
+
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [
+      Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+      Math.round(hue2rgb(p, q, h) * 255),
+      Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
+    ];
   }
 }

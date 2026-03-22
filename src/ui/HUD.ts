@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH } from '../core/Constants';
+import { GAME_WIDTH, MAP_OFFSET_Y, MAP_HEIGHT } from '../core/Constants';
 import { eventBus } from '../core/EventBus';
 
 export interface WaveEnemyCount {
@@ -70,7 +70,7 @@ export class HUD {
     });
 
     this.timerText = scene.add.text(10, 26, '', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
     });
     this.container.add(this.timerText);
 
@@ -85,8 +85,8 @@ export class HUD {
     });
     this.container.add(this.crystalText);
 
-    // Character portraits container (bottom left)
-    this.characterPortraits = scene.add.container(10, 540).setDepth(100);
+    // Character portraits container (bottom bar area, below the map)
+    this.characterPortraits = scene.add.container(10, MAP_OFFSET_Y + MAP_HEIGHT + 40).setDepth(100);
 
     this.drawWallHP();
     this.setupEvents();
@@ -179,12 +179,12 @@ export class HUD {
         // Name + count
         const countColor = entry.alive <= 0 ? '#444444' : '#ffffff';
         const txt = this.scene.add.text(tooltipX + 34, ry + rowH / 2, `${entry.name} x${entry.alive}`, {
-          fontSize: '10px', color: countColor, fontFamily: 'monospace',
+          fontSize: '13px', color: countColor, fontFamily: 'monospace',
         }).setOrigin(0, 0.5);
         this.waveTooltip!.add(txt);
       } else {
         const txt = this.scene.add.text(tooltipX + tooltipW / 2, ry + rowH / 2, entry.name, {
-          fontSize: '10px', color: '#888888', fontFamily: 'monospace',
+          fontSize: '13px', color: '#888888', fontFamily: 'monospace',
         }).setOrigin(0.5);
         this.waveTooltip!.add(txt);
       }
@@ -239,7 +239,7 @@ export class HUD {
       hpBar.fillRect(x + 2, -10, 56 * hpPct, 6);
 
       const nameText = this.scene.add.text(x + 30, -25, char.name.slice(0, 6), {
-        fontSize: '9px', color: '#ffffff', fontFamily: 'monospace',
+        fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
       }).setOrigin(0.5, 0);
 
       this.characterPortraits.add([bg, hpBar, nameText]);
@@ -262,6 +262,19 @@ export class HUD {
     this.wallHPBar.fillRect(barX, 24, barWidth * pct, 8);
 
     this.wallHPText.setText(`Muralla: ${this.wallHP}/${this.wallMaxHP}`);
+  }
+
+  hide(): void {
+    this.container.setVisible(false);
+    this.characterPortraits.setVisible(false);
+    if (this.formationBtn) this.formationBtn.setVisible(false);
+    this.hideWaveTooltip();
+  }
+
+  show(): void {
+    this.container.setVisible(true);
+    this.characterPortraits.setVisible(true);
+    if (this.formationBtn) this.formationBtn.setVisible(true);
   }
 
   destroy(): void {

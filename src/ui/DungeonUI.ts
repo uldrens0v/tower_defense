@@ -38,7 +38,7 @@ export class DungeonUI {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    this.container = scene.add.container(0, 0).setDepth(200).setVisible(false);
+    this.container = scene.add.container(0, 0).setDepth(260).setVisible(false);
   }
 
   show(dungeon: DungeonData): void {
@@ -73,7 +73,7 @@ export class DungeonUI {
       lg.fillRect(lx, legendY, 10, 10);
       this.container.add(lg);
       const lt = this.scene.add.text(lx + 14, legendY, ROOM_LABELS[type], {
-        fontSize: '9px', color: '#aaaaaa', fontFamily: 'monospace',
+        fontSize: '12px', color: '#aaaaaa', fontFamily: 'monospace',
       });
       this.container.add(lt);
     });
@@ -107,7 +107,7 @@ export class DungeonUI {
     // Info text
     const clearedCount = dungeon.rooms.filter(r => r.cleared).length;
     const infoText = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 60, `Salas exploradas: ${clearedCount} / ${dungeon.rooms.length}`, {
-      fontSize: '11px', color: '#888888', fontFamily: 'monospace',
+      fontSize: '14px', color: '#888888', fontFamily: 'monospace',
     }).setOrigin(0.5);
     this.container.add(infoText);
 

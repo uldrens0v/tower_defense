@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { eventBus } from '../core/EventBus';
-import { TILE_SIZE, GAME_WIDTH } from '../core/Constants';
+import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MAP_OFFSET_Y, MAP_HEIGHT, BOTTOM_BAR_Y } from '../core/Constants';
 import { GridMap, TileType } from '../core/GridMap';
 import type { LevelData } from '../core/GridMap';
 import { SaveSystem } from '../core/SaveSystem';
@@ -24,6 +24,7 @@ import { TargetType } from '../entities/towers/TowerEntity';
 import { SoundFX } from '../core/SoundFX';
 import { MathChallenge, TypingChallenge } from '../ui/DungeonChallenges';
 import { TroopSystem } from '../systems/combat/TroopSystem';
+import { TutorialPanel } from '../ui/TutorialPanel';
 
 import levelsData from '../data/levels.json';
 import charactersData from '../data/characters.json';
@@ -33,10 +34,10 @@ import itemsData from '../data/items.json';
 type GameState = 'preparing' | 'playing' | 'between_waves' | 'dungeon' | 'game_over' | 'victory';
 
 const AVAILABLE_TOWERS: TowerData[] = [
-  { id: 'tower_arrow', name: 'Torre de Flechas', targetType: TargetType.GROUND, damage: 15, attackSpeed: 1.2, range: 4, cost: 50, projectileSpeed: 8, aoeRadius: 0, description: 'Daño rápido a terrestres' },
-  { id: 'tower_cannon', name: 'Cañón', targetType: TargetType.GROUND, damage: 40, attackSpeed: 0.5, range: 3, cost: 80, projectileSpeed: 5, aoeRadius: 1.5, description: 'Daño AoE a terrestres' },
-  { id: 'tower_antiair', name: 'Balista Aérea', targetType: TargetType.AERIAL, damage: 25, attackSpeed: 1.0, range: 5, cost: 70, projectileSpeed: 10, aoeRadius: 0, description: 'Solo ataca aéreos' },
-  { id: 'tower_magic', name: 'Torre Arcana', targetType: TargetType.BOTH, damage: 20, attackSpeed: 0.8, range: 4, cost: 100, projectileSpeed: 6, aoeRadius: 1, description: 'Ataca todo con penalización' },
+  { id: 'tower_arrow', name: 'Torre de Flechas', targetType: TargetType.GROUND, damage: 15, attackSpeed: 1.2, range: 4, cost: 50, projectileSpeed: 20, aoeRadius: 0, description: 'Daño rápido a terrestres' },
+  { id: 'tower_cannon', name: 'Cañón', targetType: TargetType.GROUND, damage: 40, attackSpeed: 0.5, range: 3, cost: 80, projectileSpeed: 14, aoeRadius: 1.5, description: 'Daño AoE a terrestres' },
+  { id: 'tower_antiair', name: 'Balista Aérea', targetType: TargetType.AERIAL, damage: 25, attackSpeed: 1.0, range: 5, cost: 70, projectileSpeed: 24, aoeRadius: 0, description: 'Solo ataca aéreos' },
+  { id: 'tower_magic', name: 'Torre Arcana', targetType: TargetType.BOTH, damage: 20, attackSpeed: 0.8, range: 4, cost: 100, projectileSpeed: 16, aoeRadius: 1, description: 'Ataca todo con penalización' },
 ];
 
 export class GameScene extends Phaser.Scene {
@@ -83,6 +84,8 @@ export class GameScene extends Phaser.Scene {
   private dungeonUI!: DungeonUI;
   private collectionUI!: CollectionUI;
   private towerButtons: Phaser.GameObjects.Container[] = [];
+  private bottomBarContainers: Phaser.GameObjects.Container[] = []; // all bottom bar UI
+  private menuBtn: Phaser.GameObjects.Text | null = null;
   private enemyHPBars: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private enemyHPTexts: Map<string, Phaser.GameObjects.Text> = new Map();
 
@@ -96,6 +99,11 @@ export class GameScene extends Phaser.Scene {
 
   // Game over UI
   private gameOverContainer: Phaser.GameObjects.Container | null = null;
+
+  // Pause state
+  private gamePaused = false;
+  private tutorialActive = true;
+  private inSubmenu = false;
 
   // Speed control
   private speedMultiplier = 1;
@@ -157,12 +165,20 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     try {
       this.initSystems();
+      this.drawExteriorBars();
       this.loadLevel(this.currentLevelIndex);
       this.createUI();
       this.setupInput();
       this.setupEventListeners();
-      this.enterPreparationPhase(0);
-      eventBus.emit('game:ready');
+
+      // Show tutorial before starting the game
+      this.tutorialActive = true;
+      new TutorialPanel(this, () => {
+        this.tutorialActive = false;
+        this.enterPreparationPhase(0);
+        eventBus.emit('game:ready');
+      });
+
       console.log('[TD] GameScene create() completed successfully. State:', this.gameState);
     } catch (e) {
       console.error('[TD] Error in create():', e);
@@ -194,7 +210,8 @@ export class GameScene extends Phaser.Scene {
       // Gold always starts at 1000 on page reload
       // this.gold = data.gold;
       this.crystals = data.crystals;
-      this.wallHP = data.wallHP > 0 ? data.wallHP : this.wallMaxHP;
+      // Wall HP always starts full on page reload (like gold)
+      this.wallHP = this.wallMaxHP;
     }
 
     this.characterManager.load();
@@ -246,27 +263,46 @@ export class GameScene extends Phaser.Scene {
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   }
 
+  /** Draw dark bars at top and bottom, outside the map area */
+  private drawExteriorBars(): void {
+    const bars = this.add.graphics().setDepth(50);
+    // Top bar background (HUD area)
+    bars.fillStyle(0x0a0a1a, 1);
+    bars.fillRect(0, 0, GAME_WIDTH, MAP_OFFSET_Y);
+    // Bottom bar background (buttons area)
+    bars.fillStyle(0x0a0a1a, 1);
+    bars.fillRect(0, MAP_OFFSET_Y + MAP_HEIGHT, GAME_WIDTH, GAME_HEIGHT - MAP_OFFSET_Y - MAP_HEIGHT);
+    // Thin border lines separating bars from map
+    bars.lineStyle(1, 0x333344, 0.8);
+    bars.lineBetween(0, MAP_OFFSET_Y, GAME_WIDTH, MAP_OFFSET_Y);
+    bars.lineBetween(0, MAP_OFFSET_Y + MAP_HEIGHT, GAME_WIDTH, MAP_OFFSET_Y + MAP_HEIGHT);
+  }
+
   private createUI(): void {
     this.hud = new HUD(this);
     this.menuPanel = new MenuPanel(this);
+    this.menuPanel.hasTowers = () => this.defenseSystem.getTowers().length > 0;
     this.dungeonUI = new DungeonUI(this);
     this.collectionUI = new CollectionUI(this);
 
     const touch = this.isTouch();
 
-    // Menu button (☰) for mobile - replaces ESC key
+    // Menu button (☰) - replaces ESC key
     const menuBtnSize = touch ? '22px' : '18px';
-    const menuBtn = this.add.text(GAME_WIDTH - 30, 14, '☰', {
+    this.menuBtn = this.add.text(GAME_WIDTH - 30, 14, '☰', {
       fontSize: menuBtnSize, color: '#aaaaaa', fontFamily: 'monospace',
       backgroundColor: '#222233', padding: { x: 8, y: 4 },
     }).setOrigin(0.5, 0).setDepth(250).setInteractive();
-    menuBtn.on('pointerdown', () => {
+    this.menuBtn.on('pointerdown', () => {
+      if (this.tutorialActive || this.inSubmenu) return;
       this.playSfx('sfx_click');
       if (this.menuPanel.isVisible()) this.menuPanel.hide();
-      else if (this.gameState === 'preparing') this.menuPanel.show();
+      else if (this.gameState !== 'game_over' && this.gameState !== 'victory' && this.gameState !== 'dungeon') {
+        this.menuPanel.show();
+      }
     });
-    menuBtn.on('pointerover', () => menuBtn.setStroke('#ffff44', 2));
-    menuBtn.on('pointerout', () => menuBtn.setStroke('', 0));
+    this.menuBtn.on('pointerover', () => this.menuBtn?.setStroke('#ffff44', 2));
+    this.menuBtn.on('pointerout', () => this.menuBtn?.setStroke('', 0));
 
     // Troop button (left of tower buttons)
     this.createTroopButton();
@@ -275,7 +311,7 @@ export class GameScene extends Phaser.Scene {
     const btnH = touch ? 36 : 30;
     const btnW = touch ? 110 : 100;
     const fontSize = touch ? '10px' : '9px';
-    const btnY = 576 - btnH / 2 - 2; // stick to bottom edge
+    const btnY = BOTTOM_BAR_Y; // stick to bottom edge
     const btnSpacing = touch ? 118 : 120;
     const btnStartX = touch ? 190 : 200;
 
@@ -393,7 +429,7 @@ export class GameScene extends Phaser.Scene {
               const sprite = this.add.sprite(placed.worldX, placed.worldY, tower.id).setDepth(5);
               this.towerSprites.set(`${x},${y}`, sprite);
               placed.sprite = sprite;
-              this.applyTowerLevelVisual(sprite, placed.level);
+              this.applyTowerLevelVisual(sprite, placed.level, tower.id);
 
               this.selectedTowerIndex = -1;
               this.updateTowerButtonHighlights();
@@ -449,11 +485,11 @@ export class GameScene extends Phaser.Scene {
     });
 
     eventBus.on('menu:dungeon', () => {
+      this.inSubmenu = true;
       const dungeon = this.dungeonGenerator.generate(this.currentWaveIndex + 1);
       this.dungeonUI.show(dungeon);
       this.gameState = 'dungeon';
       this.playMusic('music_dungeon');
-      if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
     });
 
     eventBus.on('dungeon:enterRoom', (room: unknown) => {
@@ -541,22 +577,27 @@ export class GameScene extends Phaser.Scene {
     });
 
     eventBus.on('dungeon:exit', () => {
+      this.inSubmenu = false;
       this.gameState = 'preparing';
       this.playMusic('music_menu');
-      if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
+      eventBus.emit('game:resume');
     });
 
     eventBus.on('menu:upgrade_towers', () => {
-      if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
+      this.inSubmenu = true;
       this.showUpgradeUI();
     });
 
     eventBus.on('menu:continue', () => {
-      this.startWave(this.currentWaveIndex);
+      // If already playing, just resume (don't start a new wave)
+      if (this.gameState === 'playing') return;
+      if (this.gameState === 'preparing') {
+        this.startWave(this.currentWaveIndex);
+      }
     });
 
     eventBus.on('menu:collection', () => {
-      if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
+      this.inSubmenu = true;
       const ownedIds = new Set(this.characterManager.getAllOwned().map(c => c.data.id));
       const ultProgress = new Map<string, number>();
       const ownedInstances = new Map<string, import('../entities/characters/CharacterData').CharacterInstance>();
@@ -571,8 +612,81 @@ export class GameScene extends Phaser.Scene {
     });
 
     eventBus.on('collection:closed', () => {
-      if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
+      this.inSubmenu = false;
+      eventBus.emit('game:resume');
     });
+
+    // Pause / Resume
+    eventBus.on('game:pause', () => {
+      this.gamePaused = true;
+      this.physics.pause();
+      this.hideScenario();
+      this.hideGameUI();
+    });
+    eventBus.on('menu:escPressed', () => {
+      if (this.tutorialActive) return;
+      if (this.inSubmenu) return;
+      if (this.gameState === 'dungeon') return;
+      if (this.gameState === 'game_over' || this.gameState === 'victory') return;
+      this.menuPanel.show();
+    });
+    eventBus.on('game:resume', () => {
+      this.gamePaused = false;
+      this.physics.resume();
+      this.showScenario();
+      this.showGameUI();
+    });
+  }
+
+  /** Hide the game scenario (tiles, towers, troops, enemies, projectiles, HP bars) */
+  private hideScenario(): void {
+    for (const s of this.tileSprites) s.setVisible(false);
+    for (const s of this.towerSprites.values()) s.setVisible(false);
+    for (const s of this.troopSprites.values()) s.setVisible(false);
+    for (const s of this.enemySprites.values()) s.setVisible(false);
+    for (const s of this.projectileSprites.values()) s.setVisible(false);
+    for (const g of this.enemyHPBars.values()) g.setVisible(false);
+    for (const t of this.enemyHPTexts.values()) t.setVisible(false);
+    for (const s of this.troopProjSprites.values()) s.setVisible(false);
+    if (this.rangeGraphics) this.rangeGraphics.setVisible(false);
+    if (this.previewRangeGraphics) this.previewRangeGraphics.setVisible(false);
+    if (this.hoverRangeGraphics) this.hoverRangeGraphics.setVisible(false);
+    if (this.troopProjectileGraphics) this.troopProjectileGraphics.setVisible(false);
+  }
+
+  /** Show the game scenario */
+  private showScenario(): void {
+    for (const s of this.tileSprites) s.setVisible(true);
+    for (const s of this.towerSprites.values()) s.setVisible(true);
+    for (const s of this.troopSprites.values()) s.setVisible(true);
+    for (const s of this.enemySprites.values()) s.setVisible(true);
+    for (const s of this.projectileSprites.values()) s.setVisible(true);
+    for (const g of this.enemyHPBars.values()) g.setVisible(true);
+    for (const t of this.enemyHPTexts.values()) t.setVisible(true);
+    for (const s of this.troopProjSprites.values()) s.setVisible(true);
+    if (this.rangeGraphics) this.rangeGraphics.setVisible(true);
+    if (this.troopProjectileGraphics) this.troopProjectileGraphics.setVisible(true);
+  }
+
+  /** Hide all game UI (HUD, bottom bar, start button, menu btn) for submenus */
+  private hideGameUI(): void {
+    this.hud.hide();
+    if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
+    if (this.menuBtn) this.menuBtn.setVisible(false);
+    for (const c of this.towerButtons) c.setVisible(false);
+    for (const c of this.bottomBarContainers) c.setVisible(false);
+    this.hideTroopDropdown();
+    this.hideTowerTooltip();
+    this.hideTroopTooltip();
+  }
+
+  /** Show all game UI after returning from a submenu */
+  private showGameUI(): void {
+    this.hud.show();
+    if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
+    if (this.menuBtn) this.menuBtn.setVisible(true);
+    for (const c of this.towerButtons) c.setVisible(true);
+    for (const c of this.bottomBarContainers) c.setVisible(true);
   }
 
   private buildWaveEnemyCounts(enemies: { enemyId: string; count: number }[]): import('../ui/HUD').WaveEnemyCount[] {
@@ -636,8 +750,8 @@ export class GameScene extends Phaser.Scene {
       this.debugLogged = true;
     }
 
-    // Pause game when menu is open
-    if (this.menuPanel.isVisible()) return;
+    // Pause game when menu is open or game is paused
+    if (this.gamePaused || this.menuPanel.isVisible()) return;
 
     if (this.gameState === 'playing') {
       this.updatePlaying(delta * this.speedMultiplier);
@@ -1003,7 +1117,7 @@ export class GameScene extends Phaser.Scene {
 
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.6);
-    overlay.fillRect(0, 0, 1024, 576);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.gameOverContainer.add(overlay);
 
     const title = this.add.text(512, 180, '¡DERROTA!\nLa muralla ha caído', {
@@ -1170,10 +1284,10 @@ export class GameScene extends Phaser.Scene {
 
     const types = Array.from(typeGroups.entries());
 
-    const container = this.add.container(0, 0).setDepth(250);
+    const container = this.add.container(0, 0).setDepth(260);
     const overlay = this.add.graphics();
-    overlay.fillStyle(0x000000, 0.5);
-    overlay.fillRect(0, 0, 1024, 576);
+    overlay.fillStyle(0x000000, 0.85);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     container.add(overlay);
 
     const title = this.add.text(512, 40, 'Mejorar Torres', {
@@ -1182,7 +1296,7 @@ export class GameScene extends Phaser.Scene {
     container.add(title);
 
     const subtitle = this.add.text(512, 68, 'La mejora se aplica a TODAS las torres de ese tipo', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5);
     container.add(subtitle);
 
@@ -1193,7 +1307,8 @@ export class GameScene extends Phaser.Scene {
     closeBtn.on('pointerout', () => closeBtn.setStroke('', 0));
     closeBtn.on('pointerdown', () => {
       container.destroy();
-      if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
+      this.inSubmenu = false;
+      eventBus.emit('game:resume');
     });
     container.add(closeBtn);
 
@@ -1218,7 +1333,9 @@ export class GameScene extends Phaser.Scene {
       card.strokeRect(tx - 100, ty, 200, 280);
       container.add(card);
 
-      const icon = this.add.sprite(tx, ty + 35, typeId).setDepth(251).setScale(1.5);
+      const lvKey = `${typeId}_lv${Math.min(level, GameScene.MAX_TOWER_LEVELS)}`;
+      const iconTexture = this.textures.exists(lvKey) ? lvKey : typeId;
+      const icon = this.add.sprite(tx, ty + 35, iconTexture).setDepth(261).setScale(1.5);
       container.add(icon);
 
       const info = this.add.text(tx, ty + 65, [
@@ -1231,7 +1348,7 @@ export class GameScene extends Phaser.Scene {
         `Rango: ${group.data.range}`,
         group.data.description,
       ].join('\n'), {
-        fontSize: '11px', color: '#cccccc', fontFamily: 'monospace',
+        fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
         align: 'center', wordWrap: { width: 180 },
       }).setOrigin(0.5, 0);
       container.add(info);
@@ -1255,7 +1372,7 @@ export class GameScene extends Phaser.Scene {
             if (tower.data.id === typeId) {
               tower.level = newLevel;
               if (tower.sprite) {
-                this.applyTowerLevelVisual(tower.sprite, newLevel);
+                this.applyTowerLevelVisual(tower.sprite, newLevel, tower.data.id);
               }
             }
           }
@@ -1293,13 +1410,13 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 0).setDepth(250).setInteractive();
 
     this.startWaveBtn.on('pointerdown', () => {
+      if (this.gameState !== 'preparing') return;
       this.playSfx('sfx_click');
       this.startWave(this.currentWaveIndex);
     });
     this.addHoverEffect(this.startWaveBtn, '#44ff44');
 
-    // Also show menu panel for upgrades
-    this.menuPanel.show();
+    // Menu panel can be opened with ESC during preparation
 
     this.updateResources();
     console.log('[TD] Preparation phase for wave', waveIndex + 1);
@@ -1319,7 +1436,7 @@ export class GameScene extends Phaser.Scene {
     const bw = touch ? 110 : 100;
     const bh = touch ? 36 : 24;
     const cx = touch ? 910 : 900;
-    const cy = 576 - bh / 2 - 2;
+    const cy = BOTTOM_BAR_Y;
     const cont = this.add.container(cx, cy).setDepth(100);
 
     const bg = this.add.graphics();
@@ -1354,6 +1471,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
     cont.add(hit);
+    this.bottomBarContainers.push(cont);
   }
 
   // ---- Speed Control ----
@@ -1365,7 +1483,7 @@ export class GameScene extends Phaser.Scene {
     const bw = touch ? 90 : 80;
     const bh = touch ? 36 : 24;
     const cx = touch ? 800 : 790;
-    const cy = 576 - bh / 2 - 2;
+    const cy = BOTTOM_BAR_Y;
     const cont = this.add.container(cx, cy).setDepth(100);
 
     this.speedBg = this.add.graphics();
@@ -1374,7 +1492,7 @@ export class GameScene extends Phaser.Scene {
     cont.add(this.speedBg);
 
     this.speedBtn = this.add.text(0, 0, '>>> x1', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5);
     cont.add(this.speedBtn);
 
@@ -1409,29 +1527,37 @@ export class GameScene extends Phaser.Scene {
       }
     });
     cont.add(hit);
+    this.bottomBarContainers.push(cont);
   }
 
   // ---- Tower Level Visuals ----
   // Tint + scale towers based on level to give visual feedback
-  private static readonly LEVEL_TINTS: number[] = [
-    0xffffff, // level 1: normal
-    0xaaffaa, // level 2: green tint
-    0x88ccff, // level 3: blue tint
-    0xffaa44, // level 4: orange tint
-    0xff66ff, // level 5: pink tint
-    0xffff44, // level 6: gold tint
-    0xff4444, // level 7+: red tint
-  ];
+  private static readonly MAX_TOWER_LEVELS = 7;
 
-  private applyTowerLevelVisual(sprite: Phaser.GameObjects.Sprite, level: number): void {
-    // Tint
-    const tintIndex = Math.min(level - 1, GameScene.LEVEL_TINTS.length - 1);
-    const tint = GameScene.LEVEL_TINTS[tintIndex];
-    sprite.setTint(tint);
+  private applyTowerLevelVisual(sprite: Phaser.GameObjects.Sprite, level: number, towerId?: string): void {
+    // Use recolored texture variant for this level
+    const id = towerId ?? this.getTowerIdFromSprite(sprite);
+    if (id) {
+      const lvIndex = Math.min(level, GameScene.MAX_TOWER_LEVELS);
+      const textureKey = `${id}_lv${lvIndex}`;
+      if (this.textures.exists(textureKey)) {
+        sprite.setTexture(textureKey);
+      }
+    }
+    // Clear any old tint
+    sprite.clearTint();
 
     // Scale slightly with level (max 1.4x at level 7+)
     const scale = 1.0 + Math.min(level - 1, 6) * 0.06;
     sprite.setScale(scale);
+  }
+
+  /** Infer tower type ID from sprite's current texture key */
+  private getTowerIdFromSprite(sprite: Phaser.GameObjects.Sprite): string | null {
+    const key = sprite.texture.key;
+    // Key format: tower_xxx or tower_xxx_lvN
+    const match = key.match(/^(tower_\w+?)(?:_lv\d+)?$/);
+    return match ? match[1] : null;
   }
 
   private updateRangeGraphics(): void {
@@ -1470,7 +1596,7 @@ export class GameScene extends Phaser.Scene {
     const btnW = touch ? 110 : 100;
     const btnH = touch ? 36 : 30;
     const btnX = 70;
-    const btnY = 576 - btnH / 2 - 2;
+    const btnY = BOTTOM_BAR_Y;
     const container = this.add.container(btnX, btnY).setDepth(100);
 
     const bg = this.add.graphics();
@@ -1507,6 +1633,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
     container.add(hitArea);
+    this.bottomBarContainers.push(container);
   }
 
   private showTroopDropdown(): void {
@@ -1537,7 +1664,7 @@ export class GameScene extends Phaser.Scene {
     const contentH = pageItems.length * itemH + 10;
     const dropH = contentH + (hasPrevPage ? arrowH : 0) + (hasNextPage ? arrowH : 0);
     const dropX = 20;
-    const dropY = 545 - dropH;
+    const dropY = MAP_OFFSET_Y + MAP_HEIGHT - dropH - 4;
 
     // Background
     const bg = this.add.graphics();
@@ -1557,7 +1684,7 @@ export class GameScene extends Phaser.Scene {
       this.troopDropdownContainer.add(arrowBg);
 
       const arrowText = this.add.text(dropX + dropW / 2, currentY + arrowH / 2, `▲ Pag ${this.troopDropdownPage}/${totalPages}`, {
-        fontSize: '11px', color: '#88ff88', fontFamily: 'monospace',
+        fontSize: '14px', color: '#88ff88', fontFamily: 'monospace',
       }).setOrigin(0.5);
       this.troopDropdownContainer.add(arrowText);
 
@@ -1608,7 +1735,7 @@ export class GameScene extends Phaser.Scene {
       // Name
       const nameColor = placed ? '#555555' : isMelee ? '#ffcc88' : '#ccffcc';
       const name = this.add.text(dropX + 36, iy + 4, char.data.name, {
-        fontSize: '10px', color: nameColor, fontFamily: 'monospace',
+        fontSize: '13px', color: nameColor, fontFamily: 'monospace',
       });
       this.troopDropdownContainer!.add(name);
 
@@ -1680,7 +1807,7 @@ export class GameScene extends Phaser.Scene {
       this.troopDropdownContainer.add(arrowBg);
 
       const arrowText = this.add.text(dropX + dropW / 2, arrowY + arrowH / 2, `▼ Pag ${this.troopDropdownPage + 2}/${totalPages}`, {
-        fontSize: '11px', color: '#88ff88', fontFamily: 'monospace',
+        fontSize: '14px', color: '#88ff88', fontFamily: 'monospace',
       }).setOrigin(0.5);
       this.troopDropdownContainer.add(arrowText);
 
@@ -1769,7 +1896,7 @@ export class GameScene extends Phaser.Scene {
     // Name header
     const nameColor = isMelee ? '#ffcc88' : '#ccffcc';
     const nameText = this.add.text(tooltipX + tooltipW / 2, tooltipY + spriteAreaH + padding, char.data.name, {
-      fontSize: '11px', color: nameColor, fontFamily: 'monospace', fontStyle: 'bold',
+      fontSize: '14px', color: nameColor, fontFamily: 'monospace', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
     this.troopTooltip.add(nameText);
 
@@ -1777,11 +1904,11 @@ export class GameScene extends Phaser.Scene {
     let sy = tooltipY + spriteAreaH + padding + nameAreaH + 2;
     for (const [icon, label, value] of statRows) {
       const iconText = this.add.text(tooltipX + 6, sy, icon, {
-        fontSize: '10px', fontFamily: 'monospace',
+        fontSize: '13px', fontFamily: 'monospace',
       });
       this.troopTooltip.add(iconText);
       const statText = this.add.text(tooltipX + 22, sy + 1, `${label}: ${value}`, {
-        fontSize: '9px', color: '#cccccc', fontFamily: 'monospace',
+        fontSize: '12px', color: '#cccccc', fontFamily: 'monospace',
       });
       this.troopTooltip.add(statText);
       sy += lineH;
@@ -1791,7 +1918,7 @@ export class GameScene extends Phaser.Scene {
     if (passive) {
       sy += 2;
       const passiveText = this.add.text(tooltipX + 6, sy, `✨ ${passive.name}`, {
-        fontSize: '9px', color: '#ffdd88', fontFamily: 'monospace',
+        fontSize: '12px', color: '#ffdd88', fontFamily: 'monospace',
       });
       this.troopTooltip.add(passiveText);
       const passiveDesc = this.add.text(tooltipX + 6, sy + 12, passive.description, {
@@ -1861,7 +1988,7 @@ export class GameScene extends Phaser.Scene {
 
     // Name
     const nameText = this.add.text(tooltipX + tooltipW / 2, tooltipY + spriteAreaH + padding, tower.name, {
-      fontSize: '11px', color: '#ffdd88', fontFamily: 'monospace', fontStyle: 'bold',
+      fontSize: '14px', color: '#ffdd88', fontFamily: 'monospace', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
     this.towerTooltip.add(nameText);
 
@@ -1875,11 +2002,11 @@ export class GameScene extends Phaser.Scene {
     let sy = tooltipY + spriteAreaH + padding + nameAreaH + descAreaH + 4;
     for (const [icon, label, value] of statRows) {
       const iconText = this.add.text(tooltipX + 6, sy, icon, {
-        fontSize: '10px', fontFamily: 'monospace',
+        fontSize: '13px', fontFamily: 'monospace',
       });
       this.towerTooltip.add(iconText);
       const statText = this.add.text(tooltipX + 22, sy + 1, `${label}: ${value}`, {
-        fontSize: '9px', color: '#cccccc', fontFamily: 'monospace',
+        fontSize: '12px', color: '#cccccc', fontFamily: 'monospace',
       });
       this.towerTooltip.add(statText);
       sy += lineH;
@@ -2036,14 +2163,7 @@ export class GameScene extends Phaser.Scene {
       const sprite = this.troopSprites.get(troop.id);
       if (sprite) {
         sprite.setPosition(troop.worldX, troop.worldY);
-        // Tint based on state
-        if (troop.state === 'attacking') {
-          sprite.setTint(0xff4444);
-        } else if (troop.state === 'patrol' || troop.state === 'returning') {
-          sprite.setTint(0xffff44);
-        } else {
-          sprite.clearTint();
-        }
+        sprite.clearTint();
       }
     }
   }
