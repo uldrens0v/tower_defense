@@ -1,17 +1,66 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="screen-orientation" content="landscape" />
     <title>Tower Defense RPG</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #1a1a2e; overflow: hidden; }
-      canvas { display: block; margin: 0 auto; }
+      html, body {
+        width: 100%; height: 100%;
+        background: #1a1a2e;
+        overflow: hidden;
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        position: fixed;
+        top: 0; left: 0;
+      }
+      #app {
+        width: 100%; height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      canvas { display: block; }
+
+      /* Portrait orientation warning */
+      #rotate-warning {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: #1a1a2e;
+        color: #ffcc00;
+        font-family: monospace;
+        font-size: 18px;
+        z-index: 99999;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 20px;
+      }
+      #rotate-warning .icon { font-size: 60px; margin-bottom: 20px; }
+      #rotate-warning .sub { font-size: 13px; color: #888; margin-top: 10px; }
+
+      @media (orientation: portrait) and (max-width: 900px) {
+        #rotate-warning { display: flex !important; }
+        #app { display: none !important; }
+      }
     </style>
   </head>
   <body>
+    <div id="rotate-warning">
+      <div class="icon">📱↔️</div>
+      <div>Gira tu dispositivo</div>
+      <div class="sub">Este juego se juega en horizontal</div>
+    </div>
+    <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

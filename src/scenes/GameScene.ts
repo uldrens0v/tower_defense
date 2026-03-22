@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { eventBus } from '../core/EventBus';
-import { TILE_SIZE } from '../core/Constants';
+import { TILE_SIZE, GAME_WIDTH } from '../core/Constants';
 import { GridMap, TileType } from '../core/GridMap';
 import type { LevelData } from '../core/GridMap';
 import { SaveSystem } from '../core/SaveSystem';
@@ -245,6 +245,19 @@ export class GameScene extends Phaser.Scene {
     this.menuPanel = new MenuPanel(this);
     this.dungeonUI = new DungeonUI(this);
     this.collectionUI = new CollectionUI(this);
+
+    // Menu button (☰) for mobile - replaces ESC key
+    const menuBtn = this.add.text(GAME_WIDTH - 30, 14, '☰', {
+      fontSize: '18px', color: '#aaaaaa', fontFamily: 'monospace',
+      backgroundColor: '#222233', padding: { x: 6, y: 2 },
+    }).setOrigin(0.5, 0).setDepth(250).setInteractive();
+    menuBtn.on('pointerdown', () => {
+      this.playSfx('sfx_click');
+      if (this.menuPanel.isVisible()) this.menuPanel.hide();
+      else if (this.gameState === 'preparing') this.menuPanel.show();
+    });
+    menuBtn.on('pointerover', () => menuBtn.setStroke('#ffff44', 2));
+    menuBtn.on('pointerout', () => menuBtn.setStroke('', 0));
 
     // Troop button (left of tower buttons)
     this.createTroopButton();

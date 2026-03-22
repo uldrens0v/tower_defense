@@ -3,42 +3,34 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../core/Constants';
 
 // ── Random phrases for boss typing challenge ──
 const PHRASES: string[] = [
-  'En un lugar de la Mancha de cuyo nombre no quiero acordarme',
-  'Caminante no hay camino se hace camino al andar',
-  'La vida es sueno y los suenos suenos son',
-  'Poderoso caballero es don dinero',
-  'Yo soy yo y mi circunstancia',
+  'En un lugar de la Mancha',
+  'Caminante no hay camino',
+  'La vida es sueno',
+  'Poderoso caballero',
   'Verde que te quiero verde',
-  'Puedo escribir los versos mas tristes esta noche',
-  'Con diez canones por banda viento en popa a toda vela',
-  'Volveran las oscuras golondrinas en tu balcon sus nidos a colgar',
-  'Nuestras vidas son los rios que van a dar en la mar',
-  'Todo lo que se ignora se desprecia',
-  'La pluma es la lengua del alma',
-  'El que lee mucho y anda mucho ve mucho y sabe mucho',
   'Ladran luego cabalgamos',
-  'Mas vale maña que fuerza',
-  'No hay libro tan malo que no tenga algo bueno',
-  'La libertad es uno de los mas preciosos dones',
-  'El valor esta en el corazon no en las manos',
-  'Quien busca el peligro perece en el',
+  'Mas vale mana que fuerza',
   'Cada uno es hijo de sus obras',
+  'El valor esta en el corazon',
+  'Quien busca el peligro perece',
 ];
 
-// ── Math Expression Generator (hard!) ──
+// ── Detect touch device ──
+function isTouchDevice(): boolean {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+// ── Math Expression Generator ──
 const R = () => Math.random();
 const RI = (min: number, max: number) => Math.floor(R() * (max - min + 1)) + min;
 
-/** Build a random sub-expression string and return [expr, value] */
 function buildExpr(depth: number, difficulty: number): [string, number] {
-  // Base case: a number
   if (depth <= 0 || (depth === 1 && R() < 0.5)) {
     const maxN = Math.min(8 + difficulty * 4, 50);
     const n = RI(2, maxN);
     return [String(n), n];
   }
 
-  // Possibly generate a power expression (a^b)
   if (difficulty >= 3 && R() < 0.25) {
     const base = RI(2, Math.min(5 + difficulty, 12));
     const exp = RI(2, 3);
@@ -46,27 +38,21 @@ function buildExpr(depth: number, difficulty: number): [string, number] {
     return [`${base}^${exp}`, val];
   }
 
-  // Binary operation
   const ops = ['+', '-', '*'];
-  // Add division only if we can keep it clean
   if (R() < 0.3) ops.push('/');
 
   const op = ops[RI(0, ops.length - 1)];
-
-  // Build left and right
   const [lExpr, lVal] = buildExpr(depth - 1, difficulty);
   let [rExpr, rVal] = buildExpr(depth - 1, difficulty);
 
-  // For division, ensure clean integer result
   if (op === '/') {
-    // Pick a divisor that divides evenly
-    if (lVal === 0 || rVal === 0) return [lExpr, lVal]; // abort
+    if (lVal === 0 || rVal === 0) return [lExpr, lVal];
     const divisors: number[] = [];
     const absL = Math.abs(lVal);
     for (let d = 2; d <= Math.min(absL, 20); d++) {
       if (absL % d === 0) divisors.push(d);
     }
-    if (divisors.length === 0) return [lExpr, lVal]; // can't divide cleanly
+    if (divisors.length === 0) return [lExpr, lVal];
     rVal = divisors[RI(0, divisors.length - 1)];
     rExpr = String(rVal);
   }
@@ -80,7 +66,6 @@ function buildExpr(depth: number, difficulty: number): [string, number] {
     default: val = lVal + rVal;
   }
 
-  // Wrap in parentheses sometimes to force different evaluation order
   const useParens = depth > 1 && R() < 0.4;
   const expr = useParens
     ? `(${lExpr} ${op} ${rExpr})`
@@ -90,24 +75,65 @@ function buildExpr(depth: number, difficulty: number): [string, number] {
 }
 
 function generateMathChallenge(difficulty: number): { expression: string; answer: number } {
-  // depth scales: wave 1-2 → depth 2, wave 3-4 → depth 3, wave 5+ → depth 4
   const depth = Math.min(2 + Math.floor(difficulty / 2), 5);
 
   for (let attempt = 0; attempt < 100; attempt++) {
     const [expr, val] = buildExpr(depth, difficulty);
-
-    // Accept only clean integers in a reasonable range
     if (Number.isFinite(val) && Number.isInteger(val) && Math.abs(val) <= 5000 && expr.length >= 5) {
-      // Replace ^ with display-friendly version (keep ^ for display, user calculates)
       return { expression: expr, answer: val };
     }
   }
 
-  // Fallback: still hard
   const a = RI(10, 30);
   const b = RI(2, 8);
   const c = RI(3, 12);
   return { expression: `${a} * ${b} - ${c}`, answer: a * b - c };
+}
+
+// ── Helper: create a virtual button ──
+function addVirtualKey(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  x: number, y: number, w: number, h: number,
+  label: string, onPress: () => void,
+  color = 0x333355, textColor = '#ffffff', fontSize = '14px',
+): void {
+  const bg = scene.add.graphics();
+  bg.fillStyle(color, 0.9);
+  bg.fillRect(x, y, w, h);
+  bg.lineStyle(1, 0x555577);
+  bg.strokeRect(x, y, w, h);
+  container.add(bg);
+
+  const txt = scene.add.text(x + w / 2, y + h / 2, label, {
+    fontSize, color: textColor, fontFamily: 'monospace',
+  }).setOrigin(0.5);
+  container.add(txt);
+
+  const hit = scene.add.rectangle(x + w / 2, y + h / 2, w, h).setInteractive().setAlpha(0.01);
+  hit.on('pointerdown', () => {
+    bg.clear();
+    bg.fillStyle(0x5555aa, 1);
+    bg.fillRect(x, y, w, h);
+    bg.lineStyle(1, 0x8888cc);
+    bg.strokeRect(x, y, w, h);
+    onPress();
+  });
+  hit.on('pointerup', () => {
+    bg.clear();
+    bg.fillStyle(color, 0.9);
+    bg.fillRect(x, y, w, h);
+    bg.lineStyle(1, 0x555577);
+    bg.strokeRect(x, y, w, h);
+  });
+  hit.on('pointerout', () => {
+    bg.clear();
+    bg.fillStyle(color, 0.9);
+    bg.fillRect(x, y, w, h);
+    bg.lineStyle(1, 0x555577);
+    bg.strokeRect(x, y, w, h);
+  });
+  container.add(hit);
 }
 
 // ══════════════════════════════════════════
@@ -130,6 +156,12 @@ export class MathChallenge {
     const { expression, answer } = generateMathChallenge(difficulty);
     this.answer = answer;
 
+    const touch = isTouchDevice();
+    const panelW = 500;
+    const panelH = touch ? 340 : 280;
+    const px = (GAME_WIDTH - panelW) / 2;
+    const py = (GAME_HEIGHT - panelH) / 2;
+
     // Overlay
     const overlay = scene.add.graphics();
     overlay.fillStyle(0x000000, 0.8);
@@ -137,11 +169,6 @@ export class MathChallenge {
     this.container.add(overlay);
 
     // Panel
-    const panelW = 500;
-    const panelH = 280;
-    const px = (GAME_WIDTH - panelW) / 2;
-    const py = (GAME_HEIGHT - panelH) / 2;
-
     const panel = scene.add.graphics();
     panel.fillStyle(0x1a1a3a, 0.98);
     panel.fillRect(px, py, panelW, panelH);
@@ -150,50 +177,74 @@ export class MathChallenge {
     this.container.add(panel);
 
     // Title
-    const title = scene.add.text(GAME_WIDTH / 2, py + 20, '📦 Desafio del Cofre', {
-      fontSize: '18px', color: '#ffcc00', fontFamily: 'monospace',
+    const title = scene.add.text(GAME_WIDTH / 2, py + 12, '📦 Desafio del Cofre', {
+      fontSize: '16px', color: '#ffcc00', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(title);
 
     // Instructions
-    const inst = scene.add.text(GAME_WIDTH / 2, py + 50, 'Resuelve la operacion para abrir el cofre:', {
-      fontSize: '12px', color: '#aaaaaa', fontFamily: 'monospace',
+    const inst = scene.add.text(GAME_WIDTH / 2, py + 34, 'Resuelve la operacion para abrir el cofre:', {
+      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(inst);
 
     // Expression
-    const exprText = scene.add.text(GAME_WIDTH / 2, py + 85, expression, {
-      fontSize: '28px', color: '#ffffff', fontFamily: 'monospace',
+    const exprText = scene.add.text(GAME_WIDTH / 2, py + 54, expression, {
+      fontSize: '24px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(exprText);
 
-    // Input box bg
+    // Input box
     const inputBg = scene.add.graphics();
     inputBg.fillStyle(0x222244, 1);
-    inputBg.fillRect(px + 100, py + 140, panelW - 200, 40);
+    inputBg.fillRect(px + 100, py + 95, panelW - 200, 35);
     inputBg.lineStyle(2, 0x6666aa);
-    inputBg.strokeRect(px + 100, py + 140, panelW - 200, 40);
+    inputBg.strokeRect(px + 100, py + 95, panelW - 200, 35);
     this.container.add(inputBg);
 
-    // Input text display
-    this.inputDisplay = scene.add.text(GAME_WIDTH / 2, py + 160, '|', {
-      fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
+    this.inputDisplay = scene.add.text(GAME_WIDTH / 2, py + 112, '|', {
+      fontSize: '18px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5);
     this.container.add(this.inputDisplay);
 
     // Warning
-    const warning = scene.add.text(GAME_WIDTH / 2, py + 200, 'Respuesta incorrecta = -10 HP Muralla', {
-      fontSize: '10px', color: '#ff6644', fontFamily: 'monospace',
+    const warning = scene.add.text(GAME_WIDTH / 2, py + 136, 'Respuesta incorrecta = -10 HP Muralla', {
+      fontSize: '9px', color: '#ff6644', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(warning);
 
-    // Hint
-    const hint = scene.add.text(GAME_WIDTH / 2, py + 225, 'Escribe el resultado y pulsa ENTER', {
-      fontSize: '10px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5, 0);
-    this.container.add(hint);
+    if (touch) {
+      // Virtual numpad
+      const numKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '0', '.'];
+      const kw = 38, kh = 30, gap = 4;
+      const gridW = 4 * kw + 3 * gap;
+      const kx0 = GAME_WIDTH / 2 - gridW / 2;
+      const ky0 = py + 155;
 
-    // Keyboard input
+      numKeys.forEach((key, i) => {
+        const col = i % 4;
+        const row = Math.floor(i / 4);
+        addVirtualKey(scene, this.container,
+          kx0 + col * (kw + gap), ky0 + row * (kh + gap), kw, kh,
+          key, () => this.onVirtualKey(key), 0x333355, '#ffffff', '14px');
+      });
+
+      // Backspace and Enter buttons
+      const actionY = ky0 + 3 * (kh + gap);
+      addVirtualKey(scene, this.container,
+        kx0, actionY, (gridW - gap) / 2, kh,
+        '⌫', () => this.onVirtualKey('Backspace'), 0x553333, '#ff8888', '14px');
+      addVirtualKey(scene, this.container,
+        kx0 + (gridW + gap) / 2, actionY, (gridW - gap) / 2, kh,
+        'OK ✓', () => this.onVirtualKey('Enter'), 0x335533, '#88ff88', '14px');
+    } else {
+      const hint = scene.add.text(GAME_WIDTH / 2, py + 155, 'Escribe el resultado y pulsa ENTER', {
+        fontSize: '10px', color: '#666666', fontFamily: 'monospace',
+      }).setOrigin(0.5, 0);
+      this.container.add(hint);
+    }
+
+    // Keyboard input (works on both, but essential for desktop)
     this.keyHandler = (event: KeyboardEvent) => {
       if (event.key === 'Enter') {
         this.submit();
@@ -212,6 +263,18 @@ export class MathChallenge {
     window.addEventListener('keydown', this.keyHandler);
   }
 
+  private onVirtualKey(key: string): void {
+    if (key === 'Enter') {
+      this.submit();
+    } else if (key === 'Backspace') {
+      this.inputText = this.inputText.slice(0, -1);
+      this.updateDisplay();
+    } else if (this.inputText.length < 10) {
+      this.inputText += key;
+      this.updateDisplay();
+    }
+  }
+
   private updateDisplay(): void {
     this.inputDisplay.setText(this.inputText.length > 0 ? this.inputText + '|' : '|');
   }
@@ -220,19 +283,15 @@ export class MathChallenge {
     const userAnswer = parseFloat(this.inputText);
     const success = !isNaN(userAnswer) && Math.abs(userAnswer - this.answer) < 0.01;
 
-    // Remove key handler immediately to prevent double submit
     this.removeKeyHandler();
 
-    // Replace challenge content with result — callback will show reward in-place
     this.container.removeAll(true);
 
-    // Keep overlay
     const overlay = this.scene.add.graphics();
     overlay.fillStyle(0x000000, 0.8);
     overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.container.add(overlay);
 
-    // Brief correctness flash
     const flash = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20,
       success ? '¡Correcto!' : `Incorrecto (era ${this.answer})`, {
         fontSize: '16px', color: success ? '#44ff44' : '#ff4444', fontFamily: 'monospace',
@@ -244,7 +303,6 @@ export class MathChallenge {
     });
   }
 
-  /** Show reward/result replacing the challenge panel content */
   showResult(title: string, lines: string[], autoCloseMs = 2000): void {
     this.container.removeAll(true);
 
@@ -286,7 +344,7 @@ export class TypingChallenge {
   private typedText = '';
   private charTexts: Phaser.GameObjects.Text[] = [];
   private timerText!: Phaser.GameObjects.Text;
-  private timeLeft = 10;
+  private timeLeft: number;
   private timerEvent: Phaser.Time.TimerEvent | null = null;
   private onComplete: (success: boolean, challenge: TypingChallenge) => void;
   private keyHandler: ((event: KeyboardEvent) => void) | null = null;
@@ -297,8 +355,10 @@ export class TypingChallenge {
     this.onComplete = onComplete;
     this.container = scene.add.container(0, 0).setDepth(400);
 
-    // Pick random phrase
+    const touch = isTouchDevice();
+    // Shorter phrases for touch, more time
     this.targetPhrase = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+    this.timeLeft = touch ? 20 : 10;
 
     // Overlay
     const overlay = scene.add.graphics();
@@ -307,8 +367,8 @@ export class TypingChallenge {
     this.container.add(overlay);
 
     // Panel
-    const panelW = 900;
-    const panelH = 300;
+    const panelW = touch ? 980 : 900;
+    const panelH = touch ? 530 : 300;
     const px = (GAME_WIDTH - panelW) / 2;
     const py = (GAME_HEIGHT - panelH) / 2;
 
@@ -320,34 +380,27 @@ export class TypingChallenge {
     this.container.add(panel);
 
     // Title
-    const title = scene.add.text(GAME_WIDTH / 2, py + 15, '👹 Combate contra el Jefe', {
-      fontSize: '18px', color: '#ff4444', fontFamily: 'monospace',
+    const title = scene.add.text(GAME_WIDTH / 2, py + 8, '👹 Combate contra el Jefe', {
+      fontSize: '16px', color: '#ff4444', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(title);
 
-    // Instructions
-    const inst = scene.add.text(GAME_WIDTH / 2, py + 42, 'Escribe el texto antes de que se acabe el tiempo:', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
-    }).setOrigin(0.5, 0);
-    this.container.add(inst);
-
     // Timer
-    this.timerText = scene.add.text(GAME_WIDTH / 2, py + 65, '10.0s', {
-      fontSize: '24px', color: '#ff8844', fontFamily: 'monospace',
+    this.timerText = scene.add.text(GAME_WIDTH / 2, py + 30, `${this.timeLeft.toFixed(1)}s`, {
+      fontSize: '20px', color: '#ff8844', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(this.timerText);
 
-    // Target phrase - render each character individually for coloring
-    const phraseY = py + 110;
-    const fontSize = 16;
-    const charWidth = 9.6; // approximate monospace char width at 16px
+    // Target phrase
+    const phraseY = py + 60;
+    const fontSize = touch ? 14 : 16;
+    const charWidth = touch ? 8.4 : 9.6;
     const totalWidth = this.targetPhrase.length * charWidth;
     const startX = GAME_WIDTH / 2 - totalWidth / 2;
 
-    // Background for phrase area
     const phraseBg = scene.add.graphics();
     phraseBg.fillStyle(0x111122, 0.9);
-    phraseBg.fillRect(px + 10, phraseY - 5, panelW - 20, 30);
+    phraseBg.fillRect(px + 10, phraseY - 5, panelW - 20, 26);
     this.container.add(phraseBg);
 
     for (let i = 0; i < this.targetPhrase.length; i++) {
@@ -358,23 +411,55 @@ export class TypingChallenge {
       this.charTexts.push(charText);
     }
 
-    // Cursor/typed area label
-    const typedLabel = scene.add.text(GAME_WIDTH / 2, phraseY + 45, 'Tu texto:', {
-      fontSize: '10px', color: '#888888', fontFamily: 'monospace',
-    }).setOrigin(0.5, 0);
-    this.container.add(typedLabel);
+    if (touch) {
+      // Virtual QWERTY keyboard
+      const rows = [
+        'qwertyuiop',
+        'asdfghjkl',
+        'zxcvbnm',
+      ];
+      const kw = 30, kh = 28, gap = 3;
+      const kbY = py + 100;
 
-    // Typed text area bg
-    const typedBg = scene.add.graphics();
-    typedBg.fillStyle(0x222244, 0.8);
-    typedBg.fillRect(px + 10, phraseY + 60, panelW - 20, 30);
-    this.container.add(typedBg);
+      rows.forEach((row, ri) => {
+        const rowW = row.length * (kw + gap) - gap;
+        const rx = GAME_WIDTH / 2 - rowW / 2;
+        const ry = kbY + ri * (kh + gap);
+        for (let ci = 0; ci < row.length; ci++) {
+          const ch = row[ci];
+          addVirtualKey(scene, this.container,
+            rx + ci * (kw + gap), ry, kw, kh,
+            ch, () => this.onVirtualKey(ch), 0x333355, '#ffffff', '12px');
+        }
+      });
 
-    // Hint
-    const hint = scene.add.text(GAME_WIDTH / 2, py + panelH - 25, 'Escribe el texto exacto. Cada letra correcta cambia de color.', {
-      fontSize: '9px', color: '#555555', fontFamily: 'monospace',
-    }).setOrigin(0.5, 0);
-    this.container.add(hint);
+      // Space, backspace row
+      const lastRowY = kbY + 3 * (kh + gap);
+      const spaceW = 200;
+      addVirtualKey(scene, this.container,
+        GAME_WIDTH / 2 - spaceW / 2, lastRowY, spaceW, kh,
+        'espacio', () => this.onVirtualKey(' '), 0x444466, '#aaaaaa', '11px');
+
+      addVirtualKey(scene, this.container,
+        GAME_WIDTH / 2 + spaceW / 2 + gap + 5, lastRowY, 80, kh,
+        '⌫', () => this.onVirtualKey('Backspace'), 0x553333, '#ff8888', '13px');
+
+      // Special chars row (accents, punctuation)
+      const specialY = lastRowY + kh + gap;
+      const specials = ['á', 'é', 'í', 'ó', 'ú', 'ñ', ',', '.'];
+      const specW = specials.length * (kw + gap) - gap;
+      const specX = GAME_WIDTH / 2 - specW / 2;
+      specials.forEach((ch, i) => {
+        addVirtualKey(scene, this.container,
+          specX + i * (kw + gap), specialY, kw, kh,
+          ch, () => this.onVirtualKey(ch), 0x335544, '#ccffcc', '12px');
+      });
+    } else {
+      const hint = scene.add.text(GAME_WIDTH / 2, py + panelH - 25, 'Escribe el texto exacto. Cada letra correcta cambia de color.', {
+        fontSize: '9px', color: '#555555', fontFamily: 'monospace',
+      }).setOrigin(0.5, 0);
+      this.container.add(hint);
+    }
 
     // Timer countdown
     this.timerEvent = scene.time.addEvent({
@@ -386,7 +471,6 @@ export class TypingChallenge {
           this.finish(false);
         }
         this.timerText.setText(`${this.timeLeft.toFixed(1)}s`);
-        // Color based on time
         if (this.timeLeft <= 3) {
           this.timerText.setColor('#ff2222');
         } else if (this.timeLeft <= 6) {
@@ -396,13 +480,12 @@ export class TypingChallenge {
       loop: true,
     });
 
-    // Keyboard input
+    // Keyboard input (desktop)
     this.keyHandler = (event: KeyboardEvent) => {
       if (this.finished) return;
 
       if (event.key === 'Backspace') {
         if (this.typedText.length > 0) {
-          // Reset the color of the char we're removing
           const idx = this.typedText.length - 1;
           if (idx < this.charTexts.length) {
             this.charTexts[idx].setColor('#666666');
@@ -415,7 +498,6 @@ export class TypingChallenge {
         this.typedText += event.key;
         this.updateCharColors();
 
-        // Check if complete
         if (this.typedText.length >= this.targetPhrase.length) {
           const success = this.typedText === this.targetPhrase;
           this.finish(success);
@@ -425,16 +507,38 @@ export class TypingChallenge {
     window.addEventListener('keydown', this.keyHandler);
   }
 
+  private onVirtualKey(key: string): void {
+    if (this.finished) return;
+
+    if (key === 'Backspace') {
+      if (this.typedText.length > 0) {
+        const idx = this.typedText.length - 1;
+        if (idx < this.charTexts.length) {
+          this.charTexts[idx].setColor('#666666');
+        }
+        this.typedText = this.typedText.slice(0, -1);
+      }
+    } else {
+      this.typedText += key;
+      this.updateCharColors();
+
+      if (this.typedText.length >= this.targetPhrase.length) {
+        const success = this.typedText === this.targetPhrase;
+        this.finish(success);
+      }
+    }
+  }
+
   private updateCharColors(): void {
     for (let i = 0; i < this.charTexts.length; i++) {
       if (i < this.typedText.length) {
         if (this.typedText[i] === this.targetPhrase[i]) {
-          this.charTexts[i].setColor('#44ff44'); // Correct - green
+          this.charTexts[i].setColor('#44ff44');
         } else {
-          this.charTexts[i].setColor('#ff4444'); // Wrong - red
+          this.charTexts[i].setColor('#ff4444');
         }
       } else {
-        this.charTexts[i].setColor('#666666'); // Not typed yet
+        this.charTexts[i].setColor('#666666');
       }
     }
   }
@@ -453,7 +557,6 @@ export class TypingChallenge {
       this.keyHandler = null;
     }
 
-    // Replace challenge content with brief flash
     this.container.removeAll(true);
 
     const overlay = this.scene.add.graphics();
@@ -472,7 +575,6 @@ export class TypingChallenge {
     });
   }
 
-  /** Show reward/result replacing the challenge panel content */
   showResult(title: string, lines: string[], autoCloseMs = 2000): void {
     this.container.removeAll(true);
 
