@@ -1,0 +1,137 @@
+[
+  {
+    "id": "enemy_runner",
+    "name": "Corredor",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 60, "attack": 8, "defense": 2, "attackSpeed": 1.2, "moveSpeed": 2.5,
+    "xpReward": 10, "goldReward": 5,
+    "description": "Enemigo rápido con poca vida"
+  },
+  {
+    "id": "enemy_tank",
+    "name": "Tanque",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 300, "attack": 12, "defense": 15, "attackSpeed": 0.6, "moveSpeed": 0.8,
+    "xpReward": 25, "goldReward": 15,
+    "description": "Lento pero muy resistente"
+  },
+  {
+    "id": "enemy_berserker",
+    "name": "Berserker",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 150, "attack": 25, "defense": 5, "attackSpeed": 1.5, "moveSpeed": 1.8,
+    "xpReward": 20, "goldReward": 12,
+    "description": "Alto daño, baja defensa"
+  },
+  {
+    "id": "enemy_dark_mage",
+    "name": "Mago Oscuro",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 80, "attack": 30, "defense": 3, "attackSpeed": 0.8, "moveSpeed": 1.2,
+    "xpReward": 18, "goldReward": 10,
+    "description": "Ataque mágico a distancia"
+  },
+  {
+    "id": "enemy_healer",
+    "name": "Curandero Oscuro",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 100, "attack": 5, "defense": 8, "attackSpeed": 0.5, "moveSpeed": 1.0,
+    "xpReward": 30, "goldReward": 20,
+    "description": "Cura a otros enemigos cercanos"
+  },
+  {
+    "id": "enemy_exploder",
+    "name": "Explosor",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 40, "attack": 80, "defense": 0, "attackSpeed": 0, "moveSpeed": 2.0,
+    "xpReward": 15, "goldReward": 8,
+    "description": "Explota al llegar a su objetivo"
+  },
+  {
+    "id": "enemy_shield",
+    "name": "Escudero",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 200, "attack": 10, "defense": 25, "attackSpeed": 0.7, "moveSpeed": 1.0,
+    "xpReward": 22, "goldReward": 14,
+    "description": "Defensa extremadamente alta"
+  },
+  {
+    "id": "enemy_ground_boss",
+    "name": "Señor de la Horda",
+    "enemyType": "ground",
+    "isAerial": false,
+    "hp": 1000, "attack": 40, "defense": 20, "attackSpeed": 1.0, "moveSpeed": 0.7,
+    "xpReward": 100, "goldReward": 80,
+    "description": "Jefe terrestre. Convoca refuerzos"
+  },
+  {
+    "id": "enemy_harpy",
+    "name": "Arpía",
+    "enemyType": "aerial",
+    "isAerial": true,
+    "hp": 50, "attack": 12, "defense": 3, "attackSpeed": 1.5, "moveSpeed": 3.0,
+    "xpReward": 12, "goldReward": 8,
+    "description": "Voladora rápida y frágil"
+  },
+  {
+    "id": "enemy_wyvern",
+    "name": "Dragón Menor",
+    "enemyType": "aerial",
+    "isAerial": true,
+    "hp": 180, "attack": 20, "defense": 10, "attackSpeed": 1.0, "moveSpeed": 1.8,
+    "xpReward": 30, "goldReward": 20,
+    "description": "Dragón juvenil con aliento de fuego"
+  },
+  {
+    "id": "enemy_specter",
+    "name": "Espectro",
+    "enemyType": "aerial",
+    "isAerial": true,
+    "hp": 70, "attack": 18, "defense": 1, "attackSpeed": 1.2, "moveSpeed": 2.2,
+    "xpReward": 15, "goldReward": 10,
+    "description": "Etéreo, difícil de golpear"
+  },
+  {
+    "id": "enemy_flying_bomb",
+    "name": "Bomba Voladora",
+    "enemyType": "aerial",
+    "isAerial": true,
+    "hp": 30, "attack": 100, "defense": 0, "attackSpeed": 0, "moveSpeed": 2.5,
+    "xpReward": 18, "goldReward": 12,
+    "description": "Se estrella contra defensas aéreas"
+  },
+  {
+    "id": "enemy_sky_boss",
+    "name": "Rey del Cielo",
+    "enemyType": "aerial",
+    "isAerial": true,
+    "hp": 800, "attack": 35, "defense": 15, "attackSpeed": 1.2, "moveSpeed": 1.5,
+    "xpReward": 90, "goldReward": 70,
+    "description": "Jefe aéreo. Invoca arpías"
+  },
+  {
+    "id": "enemy_golem",
+    "name": "Gólem Flotante",
+    "enemyType": "mixed",
+    "isAerial": false,
+    "hp": 500, "attack": 30, "defense": 20, "attackSpeed": 0.5, "moveSpeed": 0.6,
+    "xpReward": 50, "goldReward": 40,
+    "description": "Alterna entre tierra y aire"
+  },
+  {
+    "id": "enemy_titan",
+    "name": "Titán",
+    "enemyType": "mixed",
+    "isAerial": false,
+    "hp": 2000, "attack": 50, "defense": 30, "attackSpeed": 0.8, "moveSpeed": 0.5,
+    "xpReward": 150, "goldReward": 100,
+    "description": "Coloso. Golpea tierra y aire"
+  }
+]

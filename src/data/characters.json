@@ -1,0 +1,221 @@
+[
+  {
+    "id": "char_soldier",
+    "name": "Soldado",
+    "rarity": "common",
+    "baseStats": { "hp": 120, "attack": 15, "defense": 10, "attackSpeed": 1.0, "range": 2, "moveSpeed": 1.5 },
+    "statGrowthPerLevel": { "hp": 8, "attack": 2, "defense": 1.5, "attackSpeed": 0.01, "range": 0, "moveSpeed": 0.01 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_archer",
+    "name": "Arquera",
+    "rarity": "common",
+    "baseStats": { "hp": 80, "attack": 20, "defense": 5, "attackSpeed": 1.3, "range": 4, "moveSpeed": 1.2 },
+    "statGrowthPerLevel": { "hp": 8, "attack": 2.5, "defense": 1, "attackSpeed": 0.015, "range": 0.05, "moveSpeed": 0.01 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_guard",
+    "name": "Guardia",
+    "rarity": "common",
+    "baseStats": { "hp": 180, "attack": 10, "defense": 18, "attackSpeed": 0.7, "range": 1, "moveSpeed": 1.0 },
+    "statGrowthPerLevel": { "hp": 10, "attack": 1.5, "defense": 2.5, "attackSpeed": 0.005, "range": 0, "moveSpeed": 0.005 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_scout",
+    "name": "Explorador",
+    "rarity": "common",
+    "baseStats": { "hp": 90, "attack": 12, "defense": 6, "attackSpeed": 1.5, "range": 3, "moveSpeed": 2.0 },
+    "statGrowthPerLevel": { "hp": 7, "attack": 1.8, "defense": 1, "attackSpeed": 0.02, "range": 0.03, "moveSpeed": 0.02 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_militia",
+    "name": "Miliciano",
+    "rarity": "common",
+    "baseStats": { "hp": 100, "attack": 14, "defense": 8, "attackSpeed": 1.1, "range": 1, "moveSpeed": 1.4 },
+    "statGrowthPerLevel": { "hp": 8, "attack": 2, "defense": 1.2, "attackSpeed": 0.01, "range": 0, "moveSpeed": 0.01 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_healer_basic",
+    "name": "Aprendiz de Curación",
+    "rarity": "common",
+    "baseStats": { "hp": 70, "attack": 5, "defense": 4, "attackSpeed": 0.8, "range": 3, "moveSpeed": 1.2 },
+    "statGrowthPerLevel": { "hp": 6, "attack": 0.8, "defense": 0.8, "attackSpeed": 0.01, "range": 0.03, "moveSpeed": 0.01 },
+    "type": "support",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_spearman",
+    "name": "Lancero",
+    "rarity": "common",
+    "baseStats": { "hp": 110, "attack": 18, "defense": 7, "attackSpeed": 0.9, "range": 2, "moveSpeed": 1.3 },
+    "statGrowthPerLevel": { "hp": 8, "attack": 2.2, "defense": 1.2, "attackSpeed": 0.01, "range": 0, "moveSpeed": 0.01 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_lookout",
+    "name": "Vigía",
+    "rarity": "common",
+    "baseStats": { "hp": 75, "attack": 16, "defense": 4, "attackSpeed": 1.2, "range": 5, "moveSpeed": 1.1 },
+    "statGrowthPerLevel": { "hp": 6, "attack": 2, "defense": 0.8, "attackSpeed": 0.015, "range": 0.05, "moveSpeed": 0.01 },
+    "type": "aerial",
+    "requiredEquipment": [],
+    "maxLevel": 30
+  },
+  {
+    "id": "char_knight",
+    "name": "Caballero",
+    "rarity": "uncommon",
+    "baseStats": { "hp": 200, "attack": 22, "defense": 16, "attackSpeed": 0.9, "range": 1, "moveSpeed": 1.2 },
+    "statGrowthPerLevel": { "hp": 12, "attack": 3, "defense": 2.5, "attackSpeed": 0.01, "range": 0, "moveSpeed": 0.01 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "passiveSkill": { "id": "passive_knight", "name": "Escudo Firme", "description": "+10% defensa cuando HP > 50%", "effect": { "defense": 0.10 } },
+    "maxLevel": 40
+  },
+  {
+    "id": "char_mage",
+    "name": "Maga Elemental",
+    "rarity": "uncommon",
+    "baseStats": { "hp": 85, "attack": 30, "defense": 5, "attackSpeed": 0.8, "range": 4, "moveSpeed": 1.0 },
+    "statGrowthPerLevel": { "hp": 10, "attack": 4, "defense": 1, "attackSpeed": 0.01, "range": 0.05, "moveSpeed": 0.005 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "passiveSkill": { "id": "passive_mage", "name": "Afinidad Arcana", "description": "+15% daño a enemigos aéreos", "effect": { "aerialDamage": 0.15 } },
+    "maxLevel": 40
+  },
+  {
+    "id": "char_ranger",
+    "name": "Guardabosques",
+    "rarity": "uncommon",
+    "baseStats": { "hp": 100, "attack": 25, "defense": 8, "attackSpeed": 1.4, "range": 5, "moveSpeed": 1.8 },
+    "statGrowthPerLevel": { "hp": 10, "attack": 3.5, "defense": 1.2, "attackSpeed": 0.02, "range": 0.05, "moveSpeed": 0.015 },
+    "type": "ground",
+    "requiredEquipment": [],
+    "passiveSkill": { "id": "passive_ranger", "name": "Tiro Certero", "description": "10% de golpe crítico (×2 daño)", "effect": { "critChance": 0.10 } },
+    "maxLevel": 40
+  },
+  {
+    "id": "char_priest",
+    "name": "Sacerdotisa",
+    "rarity": "uncommon",
+    "baseStats": { "hp": 90, "attack": 8, "defense": 8, "attackSpeed": 0.7, "range": 3, "moveSpeed": 1.1 },
+    "statGrowthPerLevel": { "hp": 10, "attack": 1, "defense": 1.5, "attackSpeed": 0.01, "range": 0.03, "moveSpeed": 0.01 },
+    "type": "support",
+    "requiredEquipment": [],
+    "passiveSkill": { "id": "passive_priest", "name": "Aura Sagrada", "description": "Cura 2% HP/s a aliados cercanos", "effect": { "healAura": 0.02 } },
+    "maxLevel": 40
+  },
+  {
+    "id": "char_hawk_rider",
+    "name": "Jinete de Halcón",
+    "rarity": "uncommon",
+    "baseStats": { "hp": 95, "attack": 22, "defense": 6, "attackSpeed": 1.3, "range": 4, "moveSpeed": 2.2 },
+    "statGrowthPerLevel": { "hp": 10, "attack": 3, "defense": 1, "attackSpeed": 0.015, "range": 0.04, "moveSpeed": 0.02 },
+    "type": "aerial",
+    "requiredEquipment": [],
+    "passiveSkill": { "id": "passive_hawk", "name": "Vista de Halcón", "description": "+20% rango vs aéreos", "effect": { "aerialRange": 0.20 } },
+    "maxLevel": 40
+  },
+  {
+    "id": "char_paladin",
+    "name": "Paladín",
+    "rarity": "rare",
+    "baseStats": { "hp": 280, "attack": 28, "defense": 22, "attackSpeed": 0.85, "range": 1, "moveSpeed": 1.1 },
+    "statGrowthPerLevel": { "hp": 18, "attack": 4, "defense": 3.5, "attackSpeed": 0.01, "range": 0, "moveSpeed": 0.01 },
+    "type": "ground",
+    "requiredEquipment": ["item_paladin_sword", "item_paladin_shield"],
+    "passiveSkill": { "id": "passive_paladin", "name": "Bastión", "description": "Reduce 20% daño recibido bajo 30% HP", "effect": { "lowHPResist": 0.20 } },
+    "ultimateSkill": { "id": "ult_paladin", "name": "Juicio Divino", "description": "AoE sagrado masivo", "cooldown": 60, "damage": 500, "aoeRadius": 4, "minLevel": 40 },
+    "maxLevel": 50
+  },
+  {
+    "id": "char_assassin",
+    "name": "Asesina Sombría",
+    "rarity": "rare",
+    "baseStats": { "hp": 120, "attack": 45, "defense": 8, "attackSpeed": 1.8, "range": 1, "moveSpeed": 2.5 },
+    "statGrowthPerLevel": { "hp": 14, "attack": 6, "defense": 1.5, "attackSpeed": 0.025, "range": 0, "moveSpeed": 0.02 },
+    "type": "ground",
+    "requiredEquipment": ["item_shadow_dagger"],
+    "passiveSkill": { "id": "passive_assassin", "name": "Golpe Furtivo", "description": "25% crítico (×3 daño) al primer ataque", "effect": { "firstStrikeCrit": 0.25 } },
+    "ultimateSkill": { "id": "ult_assassin", "name": "Danza de Cuchillas", "description": "Ataca 8 veces en 2s a enemigos cercanos", "cooldown": 45, "damage": 300, "aoeRadius": 2, "minLevel": 40 },
+    "maxLevel": 50
+  },
+  {
+    "id": "char_archmage",
+    "name": "Archimaga",
+    "rarity": "rare",
+    "baseStats": { "hp": 100, "attack": 50, "defense": 6, "attackSpeed": 0.6, "range": 6, "moveSpeed": 0.9 },
+    "statGrowthPerLevel": { "hp": 15, "attack": 7, "defense": 1, "attackSpeed": 0.008, "range": 0.06, "moveSpeed": 0.005 },
+    "type": "ground",
+    "requiredEquipment": ["item_arcane_staff"],
+    "passiveSkill": { "id": "passive_archmage", "name": "Canalización", "description": "Cada 3er ataque hace ×2 daño", "effect": { "channeling": 2.0 } },
+    "ultimateSkill": { "id": "ult_archmage", "name": "Meteoro", "description": "Impacto devastador en área grande", "cooldown": 90, "damage": 800, "aoeRadius": 5, "minLevel": 40 },
+    "maxLevel": 50
+  },
+  {
+    "id": "char_dragon_knight",
+    "name": "Caballero Dragón",
+    "rarity": "epic",
+    "baseStats": { "hp": 350, "attack": 55, "defense": 30, "attackSpeed": 1.0, "range": 2, "moveSpeed": 1.5 },
+    "statGrowthPerLevel": { "hp": 28, "attack": 7, "defense": 4, "attackSpeed": 0.015, "range": 0.02, "moveSpeed": 0.01 },
+    "type": "ground",
+    "requiredEquipment": ["item_dragon_lance", "item_dragon_armor"],
+    "passiveSkill": { "id": "passive_dk", "name": "Aliento Ígneo", "description": "Ataques queman por 5% HP/s durante 3s", "effect": { "burnDamage": 0.05 } },
+    "ultimateSkill": { "id": "ult_dk", "name": "Furia Draconiana", "description": "Se transforma, +100% stats por 10s", "cooldown": 120, "damage": 0, "aoeRadius": 0, "minLevel": 50 },
+    "maxLevel": 60
+  },
+  {
+    "id": "char_seraph",
+    "name": "Serafín",
+    "rarity": "epic",
+    "baseStats": { "hp": 200, "attack": 40, "defense": 15, "attackSpeed": 1.2, "range": 5, "moveSpeed": 2.0 },
+    "statGrowthPerLevel": { "hp": 24, "attack": 5.5, "defense": 2.5, "attackSpeed": 0.018, "range": 0.05, "moveSpeed": 0.015 },
+    "type": "aerial",
+    "requiredEquipment": ["item_holy_wings", "item_celestial_bow"],
+    "passiveSkill": { "id": "passive_seraph", "name": "Gracia Divina", "description": "Cura 5% HP al matar un enemigo", "effect": { "killHeal": 0.05 } },
+    "ultimateSkill": { "id": "ult_seraph", "name": "Lluvia de Luz", "description": "Rayo celeste que atraviesa a todos los enemigos", "cooldown": 75, "damage": 600, "aoeRadius": 3, "minLevel": 50 },
+    "maxLevel": 60
+  },
+  {
+    "id": "char_overlord",
+    "name": "Señor de la Guerra",
+    "rarity": "legendary",
+    "baseStats": { "hp": 500, "attack": 65, "defense": 40, "attackSpeed": 0.9, "range": 2, "moveSpeed": 1.3 },
+    "statGrowthPerLevel": { "hp": 45, "attack": 10, "defense": 6, "attackSpeed": 0.012, "range": 0.02, "moveSpeed": 0.008 },
+    "type": "commander",
+    "requiredEquipment": ["item_warlord_crown", "item_warlord_banner", "item_warlord_cape"],
+    "passiveSkill": { "id": "passive_overlord", "name": "Presencia Imponente", "description": "+15% stats a todos los aliados en rango 5", "effect": { "allyBuff": 0.15 } },
+    "ultimateSkill": { "id": "ult_overlord", "name": "Grito de Guerra", "description": "+50% ataque y velocidad a todo el equipo por 15s", "cooldown": 180, "damage": 0, "aoeRadius": 99, "minLevel": 65 },
+    "maxLevel": 75
+  },
+  {
+    "id": "char_phoenix",
+    "name": "Fénix Primordial",
+    "rarity": "mythic",
+    "baseStats": { "hp": 600, "attack": 90, "defense": 35, "attackSpeed": 1.3, "range": 5, "moveSpeed": 2.5 },
+    "statGrowthPerLevel": { "hp": 80, "attack": 15, "defense": 8, "attackSpeed": 0.02, "range": 0.06, "moveSpeed": 0.02 },
+    "type": "aerial",
+    "requiredEquipment": ["item_phoenix_feather", "item_phoenix_egg", "item_eternal_flame"],
+    "passiveSkill": { "id": "passive_phoenix", "name": "Renacimiento", "description": "Revive 1 vez por batalla con 50% HP", "effect": { "revive": 1 } },
+    "ultimateSkill": { "id": "ult_phoenix", "name": "Supernova", "description": "Explosión que destruye todo en pantalla, se sacrifica", "cooldown": 300, "damage": 9999, "aoeRadius": 20, "minLevel": 80 },
+    "maxLevel": 90
+  }
+]
