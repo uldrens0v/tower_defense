@@ -116,6 +116,8 @@ export class DungeonUI {
       fontSize: '16px', color: '#ffffff', fontFamily: 'monospace',
       backgroundColor: '#444444', padding: { x: 20, y: 8 },
     }).setOrigin(0.5).setInteractive();
+    backBtn.on('pointerover', () => backBtn.setStroke('#ffff44', 2));
+    backBtn.on('pointerout', () => backBtn.setStroke('', 0));
     backBtn.on('pointerdown', () => this.hide());
     this.container.add(backBtn);
 

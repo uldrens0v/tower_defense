@@ -177,14 +177,20 @@ export class CollectionUI {
     topBar.fillRect(panelX, panelY, panelW, 4);
     dc.add(topBar);
     const cx = panelX + panelW / 2;
-    let ty = panelY + 18;
+    let ty = panelY + 14;
+
+    // Character sprite
+    const spriteKey = this.scene.textures.exists(char.id) ? char.id : `troop_${char.type}`;
+    const charSprite = this.scene.add.sprite(cx, ty + 20, spriteKey).setScale(1.5).setDepth(202);
+    dc.add(charSprite);
+    ty += 46;
 
     // Name
     const nameText = this.scene.add.text(cx, ty, char.name, {
       fontSize: '18px', color: config.colorHex, fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     dc.add(nameText);
-    ty += 24;
+    ty += 22;
 
     // Rarity + type
     const typeLabels: Record<string, string> = { ground: 'Tierra', aerial: 'Aéreo', support: 'Soporte', commander: 'Comandante' };
@@ -192,7 +198,7 @@ export class CollectionUI {
       fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     dc.add(subText);
-    ty += 22;
+    ty += 20;
 
     // Get instance for level info
     const instance = this.ownedInstances.get(char.id);
@@ -237,13 +243,13 @@ export class CollectionUI {
     const stats = instance ? instance.getFinalStats() : char.baseStats;
     const statsLabel = instance ? '(con nivel y equipo)' : '(base)';
 
-    const statNames: [string, keyof typeof stats][] = [
-      ['HP', 'hp'],
-      ['Ataque', 'attack'],
-      ['Defensa', 'defense'],
-      ['Vel. Ataque', 'attackSpeed'],
-      ['Rango', 'range'],
-      ['Vel. Movimiento', 'moveSpeed'],
+    const statRows: [string, string, keyof typeof stats][] = [
+      ['❤', 'HP', 'hp'],
+      ['🗡', 'Ataque', 'attack'],
+      ['🛡', 'Defensa', 'defense'],
+      ['⚡', 'Vel.Atq', 'attackSpeed'],
+      ['◎', 'Rango', 'range'],
+      ['👢', 'Vel.Mov', 'moveSpeed'],
     ];
 
     // Two columns of stats
@@ -255,14 +261,18 @@ export class CollectionUI {
     }).setOrigin(1, 0);
     dc.add(labelInfo);
 
-    statNames.forEach(([label, key], i) => {
+    statRows.forEach(([icon, label, key], i) => {
       const sx = i < 3 ? col1X : col2X;
       const sy = ty + (i % 3) * 18;
       const val = typeof stats[key] === 'number'
         ? (Number.isInteger(stats[key]) ? stats[key].toString() : (stats[key] as number).toFixed(2))
         : String(stats[key]);
 
-      const statLine = this.scene.add.text(sx, sy, `${label}: ${val}`, {
+      const iconText = this.scene.add.text(sx, sy, icon, {
+        fontSize: '11px', fontFamily: 'monospace',
+      });
+      dc.add(iconText);
+      const statLine = this.scene.add.text(sx + 18, sy, `${label}: ${val}`, {
         fontSize: '11px', color: '#cccccc', fontFamily: 'monospace',
       });
       dc.add(statLine);

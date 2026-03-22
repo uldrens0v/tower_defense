@@ -2,6 +2,13 @@ import Phaser from 'phaser';
 import { GAME_WIDTH } from '../core/Constants';
 import { eventBus } from '../core/EventBus';
 
+export interface WaveEnemyCount {
+  enemyId: string;
+  name: string;
+  total: number;
+  alive: number;
+}
+
 export class HUD {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
@@ -13,6 +20,11 @@ export class HUD {
   private crystalText: Phaser.GameObjects.Text;
   private formationBtn: Phaser.GameObjects.Text | null = null;
   private characterPortraits: Phaser.GameObjects.Container;
+
+  // Wave tooltip
+  private waveTooltip: Phaser.GameObjects.Container | null = null;
+  private waveEnemyCounts: WaveEnemyCount[] = [];
+  private totalWaves = 0;
 
   private wallHP = 100;
   private wallMaxHP = 100;
@@ -31,22 +43,33 @@ export class HUD {
     topBar.fillRect(0, 0, GAME_WIDTH, 40);
     this.container.add(topBar);
 
-    // Wall HP bar
+    // Wall HP bar (positioned between start button and resources)
     this.wallHPBar = scene.add.graphics();
     this.container.add(this.wallHPBar);
 
-    this.wallHPText = scene.add.text(GAME_WIDTH / 2, 12, 'Muralla: 100/100', {
-      fontSize: '14px', color: '#ffffff', fontFamily: 'monospace',
+    this.wallHPText = scene.add.text(720, 8, 'Muralla: 100/100', {
+      fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(this.wallHPText);
 
-    // Wave info
-    this.waveText = scene.add.text(10, 8, 'Ola: 0', {
+    // Wave info (left side, replaces old "Ola: N")
+    this.waveText = scene.add.text(10, 8, 'Ronda 0', {
       fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace',
-    });
+      backgroundColor: '#00000000', padding: { x: 4, y: 2 },
+    }).setInteractive();
     this.container.add(this.waveText);
 
-    this.timerText = scene.add.text(10, 24, '', {
+    // Hover for wave tooltip
+    this.waveText.on('pointerover', () => {
+      this.waveText.setStroke('#ffff44', 2);
+      this.showWaveTooltip();
+    });
+    this.waveText.on('pointerout', () => {
+      this.waveText.setStroke('', 0);
+      this.hideWaveTooltip();
+    });
+
+    this.timerText = scene.add.text(10, 26, '', {
       fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
     });
     this.container.add(this.timerText);
@@ -78,7 +101,7 @@ export class HUD {
 
     eventBus.on('wave:start', (wave: unknown) => {
       this.currentWave = wave as number;
-      this.waveText.setText(`Ola: ${this.currentWave}`);
+      this.waveText.setText(`Ronda ${this.currentWave}/${this.totalWaves}`);
     });
 
     eventBus.on('resources:update', (gold: unknown, crystals: unknown) => {
@@ -87,6 +110,92 @@ export class HUD {
       this.goldText.setText(`Oro: ${this.gold}`);
       this.crystalText.setText(`Cristales: ${this.crystals}`);
     });
+  }
+
+  setTotalWaves(total: number): void {
+    this.totalWaves = total;
+    this.waveText.setText(`Ronda ${this.currentWave}/${this.totalWaves}`);
+  }
+
+  setWaveEnemies(enemies: WaveEnemyCount[]): void {
+    this.waveEnemyCounts = enemies;
+    // Update tooltip if visible
+    if (this.waveTooltip) {
+      this.hideWaveTooltip();
+      this.showWaveTooltip();
+    }
+  }
+
+  onEnemyKilled(enemyId: string): void {
+    const entry = this.waveEnemyCounts.find(e => e.enemyId === enemyId);
+    if (entry && entry.alive > 0) {
+      entry.alive--;
+      // Update tooltip if visible
+      if (this.waveTooltip) {
+        this.hideWaveTooltip();
+        this.showWaveTooltip();
+      }
+    }
+  }
+
+  private showWaveTooltip(): void {
+    this.hideWaveTooltip();
+
+    const alive = this.waveEnemyCounts.filter(e => e.alive > 0);
+    if (alive.length === 0 && this.waveEnemyCounts.length === 0) return;
+
+    this.waveTooltip = this.scene.add.container(0, 0).setDepth(210);
+
+    const tooltipX = 10;
+    const tooltipY = 42;
+    const rowH = 28;
+    const tooltipW = 180;
+    const padding = 6;
+
+    const rows = alive.length > 0 ? alive : [{ enemyId: '', name: 'Sin enemigos', total: 0, alive: 0 }];
+    const tooltipH = rows.length * rowH + padding * 2;
+
+    // Background
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x111122, 0.95);
+    bg.fillRect(tooltipX, tooltipY, tooltipW, tooltipH);
+    bg.lineStyle(2, 0xffcc00);
+    bg.strokeRect(tooltipX, tooltipY, tooltipW, tooltipH);
+    this.waveTooltip.add(bg);
+
+    rows.forEach((entry, i) => {
+      const ry = tooltipY + padding + i * rowH;
+
+      if (entry.enemyId) {
+        // Enemy sprite
+        const spriteKey = this.scene.textures.exists(entry.enemyId) ? entry.enemyId : 'character-placeholder';
+        const sprite = this.scene.add.sprite(tooltipX + 16, ry + rowH / 2, spriteKey)
+          .setScale(0.6).setDepth(211);
+        if (this.scene.anims.exists(entry.enemyId + '_walk')) {
+          sprite.play(entry.enemyId + '_walk');
+        }
+        this.waveTooltip!.add(sprite);
+
+        // Name + count
+        const countColor = entry.alive <= 0 ? '#444444' : '#ffffff';
+        const txt = this.scene.add.text(tooltipX + 34, ry + rowH / 2, `${entry.name} x${entry.alive}`, {
+          fontSize: '10px', color: countColor, fontFamily: 'monospace',
+        }).setOrigin(0, 0.5);
+        this.waveTooltip!.add(txt);
+      } else {
+        const txt = this.scene.add.text(tooltipX + tooltipW / 2, ry + rowH / 2, entry.name, {
+          fontSize: '10px', color: '#888888', fontFamily: 'monospace',
+        }).setOrigin(0.5);
+        this.waveTooltip!.add(txt);
+      }
+    });
+  }
+
+  private hideWaveTooltip(): void {
+    if (this.waveTooltip) {
+      this.waveTooltip.destroy();
+      this.waveTooltip = null;
+    }
   }
 
   showFormationButton(onPress: () => void): void {
@@ -139,18 +248,18 @@ export class HUD {
 
   private drawWallHP(): void {
     this.wallHPBar.clear();
-    const barWidth = 200;
-    const barX = (GAME_WIDTH - barWidth) / 2;
+    const barWidth = 140;
+    const barX = 720 - barWidth / 2;
     const pct = this.wallHP / this.wallMaxHP;
 
     // Background
     this.wallHPBar.fillStyle(0x333333);
-    this.wallHPBar.fillRect(barX, 28, barWidth, 8);
+    this.wallHPBar.fillRect(barX, 24, barWidth, 8);
 
     // HP fill
     const color = pct > 0.5 ? 0x44cc44 : pct > 0.2 ? 0xffaa00 : 0xff2222;
     this.wallHPBar.fillStyle(color);
-    this.wallHPBar.fillRect(barX, 28, barWidth * pct, 8);
+    this.wallHPBar.fillRect(barX, 24, barWidth * pct, 8);
 
     this.wallHPText.setText(`Muralla: ${this.wallHP}/${this.wallMaxHP}`);
   }

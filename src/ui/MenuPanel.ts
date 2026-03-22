@@ -61,8 +61,14 @@ export class MenuPanel {
         fontSize: '16px', color: '#cccccc', fontFamily: 'monospace',
       }).setOrigin(0.5).setInteractive();
 
-      btnText.on('pointerover', () => btnText.setColor('#ffffff'));
-      btnText.on('pointerout', () => btnText.setColor('#cccccc'));
+      btnText.on('pointerover', () => {
+        btnText.setColor('#ffffff');
+        btnText.setStroke('#ffff44', 2);
+      });
+      btnText.on('pointerout', () => {
+        btnText.setColor('#cccccc');
+        btnText.setStroke('', 0);
+      });
       btnText.on('pointerdown', () => {
         eventBus.emit(btn.event);
         if (btn.event === 'menu:continue') this.hide();

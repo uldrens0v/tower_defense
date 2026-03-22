@@ -19,7 +19,16 @@ const ENEMY_FRAME_COUNTS: Record<string, number> = {
   enemy_specter: 4,
 };
 
-export { ENEMY_FRAME_COUNTS };
+// Character IDs for troop sprite loading
+const CHARACTER_IDS = [
+  'char_soldier', 'char_archer', 'char_guard', 'char_scout',
+  'char_militia', 'char_healer_basic', 'char_spearman', 'char_lookout',
+  'char_knight', 'char_mage', 'char_ranger', 'char_priest',
+  'char_hawk_rider', 'char_paladin', 'char_assassin', 'char_archmage',
+  'char_dragon_knight', 'char_seraph', 'char_overlord', 'char_phoenix',
+];
+
+export { ENEMY_FRAME_COUNTS, CHARACTER_IDS };
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -55,6 +64,36 @@ export class BootScene extends Phaser.Scene {
         frameHeight: 32,
       });
     }
+
+    // Character/troop sprites (32x32 individual images)
+    for (const id of CHARACTER_IDS) {
+      this.load.image(id, base + 'troops/' + id + '.png');
+    }
+
+    // Projectile & hit effect sprites
+    const effectIds = [
+      'proj_arrow', 'proj_bolt', 'proj_fire', 'proj_magic', 'proj_frost',
+      'proj_sting', 'proj_holy', 'proj_iron', 'proj_energy',
+      'hit_sparkle', 'hit_sparkle2', 'hit_fire', 'hit_frost', 'hit_explosion',
+    ];
+    for (const id of effectIds) {
+      this.load.image(id, base + 'effects/' + id + '.png');
+    }
+
+    // Music
+    this.load.audio('music_menu', 'assets/music/menu.mp3');
+    this.load.audio('music_battle', 'assets/music/battle.mp3');
+    this.load.audio('music_dungeon', 'assets/music/dungeon.mp3');
+    this.load.audio('music_boss_defeat', 'assets/music/boss_defeat.mp3');
+
+    // SFX
+    this.load.audio('sfx_click', 'assets/sfx/click.wav');
+    this.load.audio('sfx_place', 'assets/sfx/complete.mp3');
+    this.load.audio('sfx_victory', 'assets/sfx/victory.ogg');
+    this.load.audio('sfx_defeat', 'assets/sfx/defeat.ogg');
+    this.load.audio('sfx_chest_open', 'assets/sfx/chest_open.wav');
+    this.load.audio('sfx_chest_fail', 'assets/sfx/chest_fail.wav');
+    this.load.audio('sfx_boss_win', 'assets/sfx/boss_win.wav');
   }
 
   create(): void {
@@ -80,6 +119,34 @@ export class BootScene extends Phaser.Scene {
     charG.fillCircle(16, 16, 12);
     charG.generateTexture('character-placeholder', 32, 32);
     charG.destroy();
+
+    // Wall/fortress sprite (gate with bricks)
+    const wG = this.make.graphics({ x: 0, y: 0 }, false);
+    // Base wall bricks
+    wG.fillStyle(0x666677);
+    wG.fillRect(0, 8, 32, 24);
+    // Brick lines
+    wG.lineStyle(1, 0x555566);
+    wG.lineBetween(0, 16, 32, 16);
+    wG.lineBetween(0, 24, 32, 24);
+    wG.lineBetween(8, 8, 8, 16);
+    wG.lineBetween(24, 8, 24, 16);
+    wG.lineBetween(16, 16, 16, 24);
+    // Gate arch
+    wG.fillStyle(0x332211);
+    wG.fillRect(10, 14, 12, 18);
+    // Battlements on top
+    wG.fillStyle(0x777788);
+    wG.fillRect(0, 4, 8, 8);
+    wG.fillRect(12, 4, 8, 8);
+    wG.fillRect(24, 4, 8, 8);
+    // Top highlights
+    wG.fillStyle(0x8888aa);
+    wG.fillRect(0, 4, 8, 2);
+    wG.fillRect(12, 4, 8, 2);
+    wG.fillRect(24, 4, 8, 2);
+    wG.generateTexture('wall_gate', 32, 32);
+    wG.destroy();
   }
 
   private createTroopSprites(): void {

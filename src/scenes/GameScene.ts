@@ -78,8 +78,6 @@ export class GameScene extends Phaser.Scene {
   private projectileSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
 
   // UI
-  // HUD instantiated for side-effects (event listeners)
-  // @ts-ignore: used for side-effects
   private hud!: HUD;
   private menuPanel!: MenuPanel;
   private dungeonUI!: DungeonUI;
@@ -90,7 +88,6 @@ export class GameScene extends Phaser.Scene {
 
   // Preparation phase UI
   private startWaveBtn: Phaser.GameObjects.Text | null = null;
-  private waveInfoText: Phaser.GameObjects.Text | null = null;
 
   // Range toggle
   private showRanges = false;
@@ -107,6 +104,10 @@ export class GameScene extends Phaser.Scene {
   // Placement preview
   private previewSprite: Phaser.GameObjects.Sprite | null = null;
 
+  // Music
+  private currentMusic: Phaser.Sound.BaseSound | null = null;
+  private currentMusicKey: string | null = null;
+
   // Troop system
   private troopSystem!: TroopSystem;
   private selectedCharacterId: string | null = null;
@@ -114,6 +115,38 @@ export class GameScene extends Phaser.Scene {
   private troopProjectileGraphics: Phaser.GameObjects.Graphics | null = null;
   private troopDropdownContainer: Phaser.GameObjects.Container | null = null;
   private troopDropdownPage = 0;
+  private troopTooltip: Phaser.GameObjects.Container | null = null;
+  private troopTooltipTimer: Phaser.Time.TimerEvent | null = null;
+  private towerTooltip: Phaser.GameObjects.Container | null = null;
+  private towerTooltipTimer: Phaser.Time.TimerEvent | null = null;
+
+  // Troop projectile sprites
+  private troopProjSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  // Melee hit particles
+  private hitParticles: { sprite: Phaser.GameObjects.Sprite; life: number }[] = [];
+
+  // Projectile texture per character
+  private static readonly CHAR_PROJ_MAP: Record<string, string> = {
+    char_archer: 'proj_arrow',
+    char_scout: 'proj_arrow',
+    char_mage: 'proj_fire',
+    char_ranger: 'proj_bolt',
+    char_archmage: 'proj_magic',
+    char_healer_basic: 'proj_sting',
+    char_priest: 'proj_frost',
+    char_lookout: 'proj_holy',
+    char_hawk_rider: 'proj_iron',
+    char_seraph: 'proj_holy',
+    char_phoenix: 'proj_energy',
+  };
+
+  // Hit particle per character type
+  private static readonly TYPE_HIT_MAP: Record<string, string> = {
+    ground: 'hit_sparkle',
+    aerial: 'hit_frost',
+    support: 'hit_sparkle2',
+    commander: 'hit_explosion',
+  };
 
   constructor() {
     super({ key: 'GameScene' });
@@ -200,7 +233,11 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Exit point is handled by enemy path
+    // Render wall sprite at exit point
+    const exitPt = this.gridMap.getExitPoint();
+    const exitWorld = this.gridMap.gridToWorld(exitPt.x, exitPt.y);
+    const wallSprite = this.add.sprite(exitWorld.x, exitWorld.y, 'wall_gate').setDepth(2);
+    this.tileSprites.push(wallSprite);
   }
 
   private createUI(): void {
@@ -228,14 +265,31 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5);
       container.add(txt);
 
+      const border = this.add.graphics();
+      container.add(border);
+
       const hitArea = this.add.rectangle(0, 0, 100, 30).setInteractive();
       hitArea.setAlpha(0.01);
       hitArea.on('pointerdown', () => {
         if (this.menuPanel.isVisible()) return;
+        this.playSfx('sfx_click');
         this.selectedTowerIndex = this.selectedTowerIndex === i ? -1 : i;
         this.selectedCharacterId = null; // deselect troop
         this.hideTroopDropdown();
         this.updateTowerButtonHighlights();
+      });
+      hitArea.on('pointerover', () => {
+        border.clear();
+        border.lineStyle(2, 0x888888);
+        border.strokeRect(-50, -15, 100, 30);
+        this.hideTowerTooltip();
+        this.towerTooltipTimer = this.time.delayedCall(1500, () => {
+          this.showTowerTooltip(i, btnX, btnY - 15);
+        });
+      });
+      hitArea.on('pointerout', () => {
+        border.clear();
+        this.hideTowerTooltip();
       });
       container.add(hitArea);
       this.towerButtons.push(container);
@@ -275,13 +329,14 @@ export class GameScene extends Phaser.Scene {
               const hasTower = this.towerSprites.has(`${x},${y}`);
               const placed = this.troopSystem.placeTroop(charInst, x, y, world.x, world.y, hasTower);
               if (placed) {
-                const textureKey = `troop_${charInst.data.type}`;
+                const textureKey = this.textures.exists(charInst.data.id) ? charInst.data.id : `troop_${charInst.data.type}`;
                 const sprite = this.add.sprite(placed.worldX, placed.worldY, textureKey).setDepth(12);
                 if (hasTower) sprite.setScale(0.7);
                 this.troopSprites.set(charInst.data.id, sprite);
                 placed.sprite = sprite;
                 this.selectedCharacterId = null;
                 this.clearPlacementPreview();
+                this.playSfx('sfx_place');
               }
               return;
             }
@@ -308,6 +363,7 @@ export class GameScene extends Phaser.Scene {
               this.selectedTowerIndex = -1;
               this.updateTowerButtonHighlights();
               this.clearPlacementPreview();
+              this.playSfx('sfx_place');
             } else {
               console.log('[TD] Cannot place tower at', x, y, '(already occupied?)');
             }
@@ -318,9 +374,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupEventListeners(): void {
+    // Melee hit particles
+    eventBus.on('troop:meleeHit', (...args: unknown[]) => {
+      this.spawnMeleeHitParticle(args[0] as number, args[1] as number, args[2] as string);
+    });
+
     eventBus.on('enemy:killed', (enemy: unknown) => {
       const e = enemy as EnemyInstance;
       this.gold += e.data.goldReward;
+
+      // Update HUD wave enemy counter
+      this.hud.onEnemyKilled(e.data.id);
 
       // Award XP to all owned characters
       for (const char of this.characterManager.getAllOwned()) {
@@ -353,6 +417,8 @@ export class GameScene extends Phaser.Scene {
       const dungeon = this.dungeonGenerator.generate(this.currentWaveIndex + 1);
       this.dungeonUI.show(dungeon);
       this.gameState = 'dungeon';
+      this.playMusic('music_dungeon');
+      if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
     });
 
     eventBus.on('dungeon:enterRoom', (room: unknown) => {
@@ -391,8 +457,9 @@ export class GameScene extends Phaser.Scene {
 
         case 'boss': {
           // Typing challenge
-          new TypingChallenge(this, (success) => {
+          new TypingChallenge(this, (success, challenge) => {
             if (success) {
+              this.playSfx('sfx_boss_win', 0.25);
               const bossGold = 200 + this.currentWaveIndex * 30;
               this.gold += bossGold;
               this.updateResources();
@@ -400,10 +467,13 @@ export class GameScene extends Phaser.Scene {
               const bLines = [`+${bossGold} Oro`];
               if (bossChar) bLines.push(`¡Nuevo: ${bossChar}!`);
               else bLines.push('(ya tienes todos los personajes)');
-              this.showDungeonReward('👹 Jefe derrotado', bLines);
+              challenge.showResult('👹 Jefe derrotado', bLines);
             } else {
+              // Boss defeat: stop all music and play long defeat music (no loop)
+              this.stopMusic();
+              this.playMusic('music_boss_defeat', false);
               this.gameState = 'game_over';
-              this.showDungeonReward('👹 Derrota', ['El jefe te ha vencido...']);
+              challenge.showResult('👹 Derrota', ['El jefe te ha vencido...'], 2500);
               this.time.delayedCall(2600, () => this.showGameOver());
             }
           });
@@ -412,16 +482,18 @@ export class GameScene extends Phaser.Scene {
 
         case 'chest': {
           // Math challenge before opening
-          new MathChallenge(this, this.currentWaveIndex + 1, (success) => {
+          new MathChallenge(this, this.currentWaveIndex + 1, (success, challenge) => {
             if (success) {
+              this.playSfx('sfx_chest_open', 0.4);
               const chestType = this.chestSystem.rollChestType(true);
               const result = this.chestSystem.openChest(chestType);
-              this.processChestResult(result);
+              this.processChestResultInPlace(result, challenge);
             } else {
+              this.playSfx('sfx_chest_fail', 0.35);
               this.wallHP -= 10;
               if (this.wallHP < 0) this.wallHP = 0;
               eventBus.emit('wall:damaged', this.wallHP, this.wallMaxHP);
-              this.showDungeonReward('📦 Cofre cerrado', ['Respuesta incorrecta', 'Muralla -10 HP']);
+              challenge.showResult('📦 Cofre cerrado', ['Respuesta incorrecta', 'Muralla -10 HP']);
               if (this.wallHP <= 0) {
                 this.gameState = 'game_over';
                 this.showGameOver();
@@ -435,9 +507,12 @@ export class GameScene extends Phaser.Scene {
 
     eventBus.on('dungeon:exit', () => {
       this.gameState = 'preparing';
+      this.playMusic('music_menu');
+      if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
     });
 
     eventBus.on('menu:upgrade_towers', () => {
+      if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
       this.showUpgradeUI();
     });
 
@@ -446,6 +521,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     eventBus.on('menu:collection', () => {
+      if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
       const ownedIds = new Set(this.characterManager.getAllOwned().map(c => c.data.id));
       const ultProgress = new Map<string, number>();
       const ownedInstances = new Map<string, import('../entities/characters/CharacterData').CharacterInstance>();
@@ -458,6 +534,25 @@ export class GameScene extends Phaser.Scene {
       }
       this.collectionUI.show(this.characterManager.getAllCharacterData(), ownedIds, ultProgress, ownedInstances);
     });
+
+    eventBus.on('collection:closed', () => {
+      if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
+    });
+  }
+
+  private buildWaveEnemyCounts(enemies: { enemyId: string; count: number }[]): import('../ui/HUD').WaveEnemyCount[] {
+    const map = new Map<string, { enemyId: string; name: string; total: number; alive: number }>();
+    for (const e of enemies) {
+      const existing = map.get(e.enemyId);
+      if (existing) {
+        existing.total += e.count;
+        existing.alive += e.count;
+      } else {
+        const data = this.enemyDB.get(e.enemyId);
+        map.set(e.enemyId, { enemyId: e.enemyId, name: data?.name ?? e.enemyId, total: e.count, alive: e.count });
+      }
+    }
+    return Array.from(map.values());
   }
 
   private startWave(waveIndex: number): void {
@@ -473,9 +568,13 @@ export class GameScene extends Phaser.Scene {
 
     this.currentWaveIndex = waveIndex;
     this.gameState = 'playing';
+    this.playMusic('music_battle');
     const wave = waves[waveIndex];
 
     eventBus.emit('wave:start', waveIndex + 1);
+
+    // Update HUD enemy counts for this wave
+    this.hud.setWaveEnemies(this.buildWaveEnemyCounts(wave.enemies));
 
     // Build spawn queue
     this.spawnQueue = [];
@@ -542,6 +641,7 @@ export class GameScene extends Phaser.Scene {
     // Update projectile sprites
     this.updateProjectileSprites();
     this.updateTroopProjectiles();
+    this.updateHitParticles(delta / 1000);
 
     // Clean up dead enemies
     this.cleanDeadEnemies();
@@ -782,29 +882,30 @@ export class GameScene extends Phaser.Scene {
     eventBus.emit('resources:update', this.gold, this.crystals);
   }
 
-  private processChestResult(result: { chestType: string; drops: { type: string; rarity: string; id: string }[] }): void {
-    const lines: string[] = [];
+  private processChestResultInPlace(result: { chestType: string; drops: { type: string; rarity: string; id: string }[] }, challenge: import('../ui/DungeonChallenges').MathChallenge): void {
+    const lines = this.buildChestResultLines(result);
+    this.updateResources();
+    challenge.showResult('📦 Cofre abierto', lines);
+  }
 
+  private buildChestResultLines(result: { chestType: string; drops: { type: string; rarity: string; id: string }[] }): string[] {
+    const lines: string[] = [];
     for (const drop of result.drops) {
       if (drop.type === 'character') {
         const charName = this.tryRollCharacter();
         if (charName) {
           lines.push(`🎭 ¡Personaje: ${charName}!`);
         } else {
-          // Already have all characters, give gold instead
           this.gold += 100;
           lines.push('💰 +100 Oro (personaje duplicado)');
         }
       } else {
-        // Give gold for items (simplified)
         const goldValue = drop.rarity === 'common' ? 20 : drop.rarity === 'uncommon' ? 40 : drop.rarity === 'rare' ? 80 : 150;
         this.gold += goldValue;
         lines.push(`💰 +${goldValue} Oro (${drop.rarity})`);
       }
     }
-
-    this.updateResources();
-    this.showDungeonReward('📦 Cofre abierto', lines);
+    return lines;
   }
 
   /** Roll a random character from the DB that the player doesn't own yet */
@@ -849,6 +950,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showGameOver(): void {
+    // If boss defeat music is playing, keep it; otherwise stop and play defeat sfx
+    if (this.currentMusicKey !== 'music_boss_defeat') {
+      this.stopMusic();
+      this.playSfx('sfx_defeat', 0.7);
+    }
+
+    // Hide all other UI elements
+    this.clearPreparationUI();
+    this.hideTroopDropdown();
+    this.clearPlacementPreview();
+    if (this.menuPanel.isVisible()) this.menuPanel.hide();
+    if (this.dungeonUI.isVisible()) this.dungeonUI.hide();
+    if (this.rangeGraphics) this.rangeGraphics.clear();
+
     this.gameOverContainer = this.add.container(0, 0).setDepth(300);
 
     const overlay = this.add.graphics();
@@ -868,8 +983,10 @@ export class GameScene extends Phaser.Scene {
       backgroundColor: '#884422', padding: { x: 20, y: 10 },
     }).setOrigin(0.5).setInteractive();
     retryBtn.on('pointerdown', () => {
+      this.playSfx('sfx_click');
       this.restartAtLevel(this.currentLevelIndex);
     });
+    this.addHoverEffect(retryBtn, '#ffaa44');
     this.gameOverContainer.add(retryBtn);
 
     // Button: Restart from level 1
@@ -878,12 +995,17 @@ export class GameScene extends Phaser.Scene {
       backgroundColor: '#442288', padding: { x: 20, y: 10 },
     }).setOrigin(0.5).setInteractive();
     restartBtn.on('pointerdown', () => {
+      this.playSfx('sfx_click');
       this.restartAtLevel(0);
     });
+    this.addHoverEffect(restartBtn, '#8844ff');
     this.gameOverContainer.add(restartBtn);
   }
 
   private restartAtLevel(levelIndex: number): void {
+    // Stop any playing music (including boss defeat)
+    this.stopMusic();
+
     // Clean game over UI
     if (this.gameOverContainer) {
       this.gameOverContainer.destroy();
@@ -900,6 +1022,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showVictory(): void {
+    this.stopMusic();
+    this.playSfx('sfx_victory', 0.7);
     if (this.currentLevelIndex < levelsData.length - 1) {
       this.currentLevelIndex++;
       this.gold = 1000;
@@ -924,7 +1048,9 @@ export class GameScene extends Phaser.Scene {
         backgroundColor: '#225522', padding: { x: 20, y: 10 },
       }).setOrigin(0.5).setDepth(300).setInteractive();
 
+      this.addHoverEffect(nextBtn, '#44ff44');
       nextBtn.on('pointerdown', () => {
+        this.playSfx('sfx_click');
         victoryText.destroy();
         nextBtn.destroy();
         this.cleanAllState();
@@ -960,8 +1086,16 @@ export class GameScene extends Phaser.Scene {
       this.troopProjectileGraphics.destroy();
       this.troopProjectileGraphics = null;
     }
+    // Destroy troop projectile sprites
+    for (const sprite of this.troopProjSprites.values()) sprite.destroy();
+    this.troopProjSprites.clear();
+    // Destroy hit particles
+    for (const p of this.hitParticles) p.sprite.destroy();
+    this.hitParticles = [];
     if (this.troopSystem) this.troopSystem.clearAll();
     this.selectedCharacterId = null;
+    this.hideTroopTooltip();
+    this.hideTowerTooltip();
     // Clear arrays
     this.activeEnemies = [];
     this.spawnQueue = [];
@@ -1018,7 +1152,12 @@ export class GameScene extends Phaser.Scene {
     const closeBtn = this.add.text(512, 520, '[ Cerrar ]', {
       fontSize: '16px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5).setInteractive();
-    closeBtn.on('pointerdown', () => container.destroy());
+    closeBtn.on('pointerover', () => closeBtn.setStroke('#ffff44', 2));
+    closeBtn.on('pointerout', () => closeBtn.setStroke('', 0));
+    closeBtn.on('pointerdown', () => {
+      container.destroy();
+      if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
+    });
     container.add(closeBtn);
 
     const cols = types.length;
@@ -1068,6 +1207,7 @@ export class GameScene extends Phaser.Scene {
         padding: { x: 10, y: 6 },
       }).setOrigin(0.5).setInteractive();
 
+      this.addHoverEffect(upgradeBtn, canAfford ? '#44ff44' : '#ff4444');
       upgradeBtn.on('pointerdown', () => {
         if (this.gold >= upgradeCost) {
           this.gold -= upgradeCost;
@@ -1100,29 +1240,26 @@ export class GameScene extends Phaser.Scene {
   private enterPreparationPhase(waveIndex: number): void {
     this.gameState = 'preparing';
     this.currentWaveIndex = waveIndex;
+    this.playMusic('music_menu');
 
     const waves = this.gridMap.getWaves();
     const wave = waves[waveIndex];
 
-    // Show wave info
-    const enemySummary = wave.enemies.map(e => {
-      const data = this.enemyDB.get(e.enemyId);
-      return `${data?.name ?? e.enemyId} x${e.count}`;
-    }).join(', ');
+    // Update HUD with wave enemy data
+    this.hud.setTotalWaves(waves.length);
+    this.hud.setWaveEnemies(this.buildWaveEnemyCounts(wave.enemies));
 
-    this.waveInfoText = this.add.text(512, 12, `Ronda ${waveIndex + 1} de ${waves.length} — ${enemySummary}`, {
-      fontSize: '12px', color: '#ffcc00', fontFamily: 'monospace',
-      backgroundColor: '#000000aa', padding: { x: 10, y: 4 },
-    }).setOrigin(0.5, 0).setDepth(200);
-
-    this.startWaveBtn = this.add.text(512, 500, '⚔ INICIAR RONDA', {
-      fontSize: '22px', color: '#ffffff', fontFamily: 'monospace',
-      backgroundColor: '#226622', padding: { x: 30, y: 12 },
-    }).setOrigin(0.5).setDepth(200).setInteractive();
+    // Start wave button — top bar, between round info and wall HP
+    this.startWaveBtn = this.add.text(512, 10, '⚔ INICIAR RONDA', {
+      fontSize: '13px', color: '#ffffff', fontFamily: 'monospace',
+      backgroundColor: '#226622', padding: { x: 12, y: 6 },
+    }).setOrigin(0.5, 0).setDepth(250).setInteractive();
 
     this.startWaveBtn.on('pointerdown', () => {
+      this.playSfx('sfx_click');
       this.startWave(this.currentWaveIndex);
     });
+    this.addHoverEffect(this.startWaveBtn, '#44ff44');
 
     // Also show menu panel for upgrades
     this.menuPanel.show();
@@ -1136,21 +1273,36 @@ export class GameScene extends Phaser.Scene {
       this.startWaveBtn.destroy();
       this.startWaveBtn = null;
     }
-    if (this.waveInfoText) {
-      this.waveInfoText.destroy();
-      this.waveInfoText = null;
-    }
     this.menuPanel.hide();
   }
 
   // ---- Range Toggle ----
   private createRangeToggleButton(): void {
-    this.rangeToggleBtn = this.add.text(900, 560, '◎ Rangos: OFF', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
-      backgroundColor: '#333333', padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setDepth(100).setInteractive();
+    const cx = 900, cy = 560, bw = 100, bh = 24;
+    const cont = this.add.container(cx, cy).setDepth(100);
 
-    this.rangeToggleBtn.on('pointerdown', () => {
+    const bg = this.add.graphics();
+    bg.fillStyle(0x333333, 0.9);
+    bg.fillRect(-bw / 2, -bh / 2, bw, bh);
+    cont.add(bg);
+
+    this.rangeToggleBtn = this.add.text(0, 0, '◎ Rangos: OFF', {
+      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    cont.add(this.rangeToggleBtn);
+
+    const border = this.add.graphics();
+    cont.add(border);
+
+    const hit = this.add.rectangle(0, 0, bw, bh).setInteractive().setAlpha(0.01);
+    hit.on('pointerover', () => {
+      border.clear();
+      border.lineStyle(2, 0x44aaff);
+      border.strokeRect(-bw / 2, -bh / 2, bw, bh);
+    });
+    hit.on('pointerout', () => { border.clear(); });
+    hit.on('pointerdown', () => {
+      this.playSfx('sfx_click');
       this.showRanges = !this.showRanges;
       if (this.rangeToggleBtn) {
         this.rangeToggleBtn.setText(this.showRanges ? '◎ Rangos: ON' : '◎ Rangos: OFF');
@@ -1160,30 +1312,58 @@ export class GameScene extends Phaser.Scene {
         this.rangeGraphics.clear();
       }
     });
+    cont.add(hit);
   }
 
   // ---- Speed Control ----
-  private createSpeedButton(): void {
-    this.speedBtn = this.add.text(790, 560, '>>> x1', {
-      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
-      backgroundColor: '#333333', padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setDepth(100).setInteractive();
+  private speedBg: Phaser.GameObjects.Graphics | null = null;
+  private speedBorder: Phaser.GameObjects.Graphics | null = null;
 
-    this.speedBtn.on('pointerdown', () => {
+  private createSpeedButton(): void {
+    const cx = 790, cy = 560, bw = 80, bh = 24;
+    const cont = this.add.container(cx, cy).setDepth(100);
+
+    this.speedBg = this.add.graphics();
+    this.speedBg.fillStyle(0x333333, 0.9);
+    this.speedBg.fillRect(-bw / 2, -bh / 2, bw, bh);
+    cont.add(this.speedBg);
+
+    this.speedBtn = this.add.text(0, 0, '>>> x1', {
+      fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    cont.add(this.speedBtn);
+
+    this.speedBorder = this.add.graphics();
+    cont.add(this.speedBorder);
+
+    const hit = this.add.rectangle(0, 0, bw, bh).setInteractive().setAlpha(0.01);
+    hit.on('pointerover', () => {
+      if (!this.speedBorder) return;
+      this.speedBorder.clear();
+      const hoverColor = this.speedMultiplier === 3 ? 0xff8844 : 0x888888;
+      this.speedBorder.lineStyle(2, hoverColor);
+      this.speedBorder.strokeRect(-bw / 2, -bh / 2, bw, bh);
+    });
+    hit.on('pointerout', () => { this.speedBorder?.clear(); });
+    hit.on('pointerdown', () => {
       if (this.menuPanel.isVisible()) return;
+      this.playSfx('sfx_click');
       this.speedMultiplier = this.speedMultiplier === 1 ? 3 : 1;
-      if (this.speedBtn) {
+      if (this.speedBtn && this.speedBg) {
+        this.speedBg.clear();
         if (this.speedMultiplier === 3) {
           this.speedBtn.setText('>>> x3');
           this.speedBtn.setColor('#ff8844');
-          this.speedBtn.setStyle({ backgroundColor: '#553311' });
+          this.speedBg.fillStyle(0x553311, 0.9);
         } else {
           this.speedBtn.setText('>>> x1');
           this.speedBtn.setColor('#aaaaaa');
-          this.speedBtn.setStyle({ backgroundColor: '#333333' });
+          this.speedBg.fillStyle(0x333333, 0.9);
         }
+        this.speedBg.fillRect(-bw / 2, -bh / 2, bw, bh);
       }
     });
+    cont.add(hit);
   }
 
   // ---- Tower Level Visuals ----
@@ -1257,9 +1437,21 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     container.add(txt);
 
+    const border = this.add.graphics();
+    container.add(border);
+
     const hitArea = this.add.rectangle(0, 0, 100, 30).setInteractive().setAlpha(0.01);
+    hitArea.on('pointerover', () => {
+      border.clear();
+      border.lineStyle(2, 0x88ff88);
+      border.strokeRect(-50, -15, 100, 30);
+    });
+    hitArea.on('pointerout', () => {
+      border.clear();
+    });
     hitArea.on('pointerdown', () => {
       if (this.menuPanel.isVisible()) return;
+      this.playSfx('sfx_click');
       if (this.troopDropdownContainer) {
         this.hideTroopDropdown();
       } else {
@@ -1359,13 +1551,11 @@ export class GameScene extends Phaser.Scene {
       rowBg.fillRect(dropX + 2, iy, dropW - 4, itemH - 2);
       this.troopDropdownContainer!.add(rowBg);
 
-      // Type icon
-      const iconKey = `troop_${char.data.type}`;
-      if (this.textures.exists(iconKey)) {
-        const icon = this.add.sprite(dropX + 18, iy + itemH / 2, iconKey).setScale(0.6).setDepth(151);
-        if (placed) icon.setAlpha(0.3);
-        this.troopDropdownContainer!.add(icon);
-      }
+      // Character sprite icon
+      const iconKey = this.textures.exists(char.data.id) ? char.data.id : `troop_${char.data.type}`;
+      const icon = this.add.sprite(dropX + 18, iy + itemH / 2, iconKey).setScale(0.6).setDepth(151);
+      if (placed) icon.setAlpha(0.3);
+      this.troopDropdownContainer!.add(icon);
 
       // Name
       const nameColor = placed ? '#555555' : isMelee ? '#ffcc88' : '#ccffcc';
@@ -1398,28 +1588,39 @@ export class GameScene extends Phaser.Scene {
         this.troopDropdownContainer!.add(check);
       }
 
-      // Click handler
-      if (!placed) {
-        const hit = this.add.rectangle(dropX + dropW / 2, iy + itemH / 2, dropW - 4, itemH - 2)
-          .setInteractive().setAlpha(0.01);
-        hit.on('pointerover', () => {
+      // Hit area for hover tooltip + click (all troops get hover, only unplaced get click)
+      const hit = this.add.rectangle(dropX + dropW / 2, iy + itemH / 2, dropW - 4, itemH - 2)
+        .setInteractive().setAlpha(0.01);
+      hit.on('pointerover', () => {
+        if (!placed) {
           rowBg.clear();
           rowBg.fillStyle(rowHover, 0.9);
           rowBg.fillRect(dropX + 2, iy, dropW - 4, itemH - 2);
+        }
+        // Start 1.5s tooltip timer
+        this.hideTroopTooltip();
+        this.troopTooltipTimer = this.time.delayedCall(1500, () => {
+          this.showTroopTooltip(char, iy + itemH);
         });
-        hit.on('pointerout', () => {
+      });
+      hit.on('pointerout', () => {
+        if (!placed) {
           rowBg.clear();
           rowBg.fillStyle(rowNormal, 0.8);
           rowBg.fillRect(dropX + 2, iy, dropW - 4, itemH - 2);
-        });
+        }
+        this.hideTroopTooltip();
+      });
+      if (!placed) {
         hit.on('pointerdown', () => {
+          this.playSfx('sfx_click');
           this.selectedCharacterId = char.data.id;
           this.selectedTowerIndex = -1;
           this.updateTowerButtonHighlights();
           this.hideTroopDropdown();
         });
-        this.troopDropdownContainer!.add(hit);
       }
+      this.troopDropdownContainer!.add(hit);
     });
 
     // Next page arrow
@@ -1456,9 +1657,195 @@ export class GameScene extends Phaser.Scene {
   }
 
   private hideTroopDropdown(): void {
+    this.hideTroopTooltip();
     if (this.troopDropdownContainer) {
       this.troopDropdownContainer.destroy();
       this.troopDropdownContainer = null;
+    }
+  }
+
+  private showTroopTooltip(char: import('../entities/characters/CharacterData').CharacterInstance, rowBottomY: number): void {
+    this.hideTroopTooltip();
+
+    const stats = char.getFinalStats();
+    const isMelee = stats.range <= 2;
+    const dropX = 20;
+    const dropW = 200;
+    const tooltipW = 195;
+    const tooltipX = dropX + dropW + 6;
+
+    const typeLabel = char.data.type === 'ground' ? 'Tierra' : char.data.type === 'aerial' ? 'Aéreo' : char.data.type === 'support' ? 'Soporte' : 'Comandante';
+    const rarityLabel = char.data.rarity.charAt(0).toUpperCase() + char.data.rarity.slice(1);
+    const combatLabel = isMelee ? 'Cuerpo a cuerpo' : 'A distancia';
+
+    // Stat rows: [icon, label, value]
+    const statRows: [string, string, string][] = [
+      ['🏷', 'Tipo', typeLabel],
+      ['💎', 'Rareza', rarityLabel],
+      [isMelee ? '⚔' : '🏹', 'Combate', combatLabel],
+      ['⭐', 'Nivel', `${char.level}`],
+      ['❤', 'HP', `${stats.hp}`],
+      ['🗡', 'ATK', `${stats.attack}`],
+      ['🛡', 'DEF', `${stats.defense}`],
+      ['⚡', 'Vel.Atq', `${stats.attackSpeed.toFixed(2)}`],
+      ['◎', 'Rango', `${stats.range}`],
+      ['👢', 'Vel.Mov', `${stats.moveSpeed.toFixed(2)}`],
+    ];
+
+    const passive = char.data.passiveSkill;
+    const lineH = 14;
+    const spriteAreaH = 40;
+    const nameAreaH = 18;
+    const padding = 8;
+    const statsH = statRows.length * lineH;
+    const passiveH = passive ? 30 : 0;
+    const tooltipH = spriteAreaH + nameAreaH + statsH + passiveH + padding * 2 + 4;
+    const tooltipY = rowBottomY - tooltipH;
+
+    this.troopTooltip = this.add.container(0, 0).setDepth(160);
+
+    // Background
+    const bg = this.add.graphics();
+    const borderColor = isMelee ? 0xff9944 : 0x44ff88;
+    bg.fillStyle(0x111122, 0.95);
+    bg.fillRect(tooltipX, tooltipY, tooltipW, tooltipH);
+    bg.lineStyle(2, borderColor);
+    bg.strokeRect(tooltipX, tooltipY, tooltipW, tooltipH);
+    this.troopTooltip.add(bg);
+
+    // Character sprite
+    const spriteKey = this.textures.exists(char.data.id) ? char.data.id : `troop_${char.data.type}`;
+    const sprite = this.add.sprite(tooltipX + tooltipW / 2, tooltipY + padding + 16, spriteKey).setScale(1).setDepth(161);
+    this.troopTooltip.add(sprite);
+
+    // Name header
+    const nameColor = isMelee ? '#ffcc88' : '#ccffcc';
+    const nameText = this.add.text(tooltipX + tooltipW / 2, tooltipY + spriteAreaH + padding, char.data.name, {
+      fontSize: '11px', color: nameColor, fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+    this.troopTooltip.add(nameText);
+
+    // Stat rows with icons
+    let sy = tooltipY + spriteAreaH + padding + nameAreaH + 2;
+    for (const [icon, label, value] of statRows) {
+      const iconText = this.add.text(tooltipX + 6, sy, icon, {
+        fontSize: '10px', fontFamily: 'monospace',
+      });
+      this.troopTooltip.add(iconText);
+      const statText = this.add.text(tooltipX + 22, sy + 1, `${label}: ${value}`, {
+        fontSize: '9px', color: '#cccccc', fontFamily: 'monospace',
+      });
+      this.troopTooltip.add(statText);
+      sy += lineH;
+    }
+
+    // Passive skill
+    if (passive) {
+      sy += 2;
+      const passiveText = this.add.text(tooltipX + 6, sy, `✨ ${passive.name}`, {
+        fontSize: '9px', color: '#ffdd88', fontFamily: 'monospace',
+      });
+      this.troopTooltip.add(passiveText);
+      const passiveDesc = this.add.text(tooltipX + 6, sy + 12, passive.description, {
+        fontSize: '8px', color: '#999999', fontFamily: 'monospace',
+        wordWrap: { width: tooltipW - 16 },
+      });
+      this.troopTooltip.add(passiveDesc);
+    }
+  }
+
+  private hideTroopTooltip(): void {
+    if (this.troopTooltipTimer) {
+      this.troopTooltipTimer.remove();
+      this.troopTooltipTimer = null;
+    }
+    if (this.troopTooltip) {
+      this.troopTooltip.destroy();
+      this.troopTooltip = null;
+    }
+  }
+
+  private showTowerTooltip(towerIndex: number, btnX: number, btnTopY: number): void {
+    this.hideTowerTooltip();
+
+    const tower = AVAILABLE_TOWERS[towerIndex];
+    if (!tower) return;
+
+    const tooltipW = 190;
+    const targetLabel = tower.targetType === TargetType.GROUND ? 'Terrestres' : tower.targetType === TargetType.AERIAL ? 'Aéreos' : 'Todos';
+
+    const statRows: [string, string, string][] = [
+      ['🎯', 'Objetivo', targetLabel],
+      ['🗡', 'Daño', `${tower.damage}`],
+      ['⚡', 'Vel.Atq', `${tower.attackSpeed.toFixed(1)}`],
+      ['◎', 'Rango', `${tower.range}`],
+      ['💰', 'Coste', `$${tower.cost}`],
+      ['🚀', 'Vel.Proy', `${tower.projectileSpeed}`],
+    ];
+    if (tower.aoeRadius > 0) {
+      statRows.push(['💥', 'AoE', `${tower.aoeRadius}`]);
+    }
+
+    const lineH = 14;
+    const spriteAreaH = 36;
+    const nameAreaH = 16;
+    const descAreaH = 14;
+    const padding = 8;
+    const statsH = statRows.length * lineH;
+    const tooltipH = spriteAreaH + nameAreaH + descAreaH + statsH + padding * 2 + 4;
+    const tooltipX = btnX - tooltipW / 2;
+    const tooltipY = btnTopY - tooltipH - 4;
+
+    this.towerTooltip = this.add.container(0, 0).setDepth(160);
+
+    // Background
+    const bg = this.add.graphics();
+    bg.fillStyle(0x111122, 0.95);
+    bg.fillRect(tooltipX, tooltipY, tooltipW, tooltipH);
+    bg.lineStyle(2, 0x888888);
+    bg.strokeRect(tooltipX, tooltipY, tooltipW, tooltipH);
+    this.towerTooltip.add(bg);
+
+    // Tower sprite
+    const spriteKey = this.textures.exists(tower.id) ? tower.id : 'tower_arrow';
+    const sprite = this.add.sprite(tooltipX + tooltipW / 2, tooltipY + padding + 14, spriteKey).setScale(1).setDepth(161);
+    this.towerTooltip.add(sprite);
+
+    // Name
+    const nameText = this.add.text(tooltipX + tooltipW / 2, tooltipY + spriteAreaH + padding, tower.name, {
+      fontSize: '11px', color: '#ffdd88', fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+    this.towerTooltip.add(nameText);
+
+    // Description
+    const descText = this.add.text(tooltipX + tooltipW / 2, tooltipY + spriteAreaH + padding + nameAreaH, tower.description, {
+      fontSize: '8px', color: '#999999', fontFamily: 'monospace',
+    }).setOrigin(0.5, 0);
+    this.towerTooltip.add(descText);
+
+    // Stat rows with icons
+    let sy = tooltipY + spriteAreaH + padding + nameAreaH + descAreaH + 4;
+    for (const [icon, label, value] of statRows) {
+      const iconText = this.add.text(tooltipX + 6, sy, icon, {
+        fontSize: '10px', fontFamily: 'monospace',
+      });
+      this.towerTooltip.add(iconText);
+      const statText = this.add.text(tooltipX + 22, sy + 1, `${label}: ${value}`, {
+        fontSize: '9px', color: '#cccccc', fontFamily: 'monospace',
+      });
+      this.towerTooltip.add(statText);
+      sy += lineH;
+    }
+  }
+
+  private hideTowerTooltip(): void {
+    if (this.towerTooltipTimer) {
+      this.towerTooltipTimer.remove();
+      this.towerTooltipTimer = null;
+    }
+    if (this.towerTooltip) {
+      this.towerTooltip.destroy();
+      this.towerTooltip = null;
     }
   }
 
@@ -1471,7 +1858,7 @@ export class GameScene extends Phaser.Scene {
     if (this.selectedCharacterId) {
       const charInst = this.characterManager.getOwnedCharacter(this.selectedCharacterId);
       if (charInst) {
-        textureKey = `troop_${charInst.data.type}`;
+        textureKey = this.textures.exists(charInst.data.id) ? charInst.data.id : `troop_${charInst.data.type}`;
         if (hasTower) scale = 0.7;
       }
     } else if (this.selectedTowerIndex >= 0) {
@@ -1494,6 +1881,46 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private addHoverEffect(btn: Phaser.GameObjects.Text, borderColor = '#ffff44'): void {
+    const origStyle = btn.style;
+    const origStroke = origStyle.stroke as string | undefined;
+    const origStrokeW = origStyle.strokeThickness as number | undefined;
+    btn.on('pointerover', () => {
+      btn.setStroke(borderColor, 3);
+    });
+    btn.on('pointerout', () => {
+      btn.setStroke(origStroke ?? '', origStrokeW ?? 0);
+    });
+  }
+
+  private playMusic(key: string, loop = true): void {
+    if (this.currentMusicKey === key) return;
+    if (this.currentMusic) {
+      this.currentMusic.stop();
+      this.currentMusic.destroy();
+    }
+    this.currentMusicKey = key;
+    if (this.cache.audio.exists(key)) {
+      this.currentMusic = this.sound.add(key, { loop, volume: 0.3 });
+      this.currentMusic.play();
+    }
+  }
+
+  private playSfx(key: string, volume = 0.5): void {
+    if (this.cache.audio.exists(key)) {
+      this.sound.play(key, { volume });
+    }
+  }
+
+  private stopMusic(): void {
+    if (this.currentMusic) {
+      this.currentMusic.stop();
+      this.currentMusic.destroy();
+      this.currentMusic = null;
+      this.currentMusicKey = null;
+    }
+  }
+
   private updateTroopSprites(): void {
     for (const troop of this.troopSystem.getTroops()) {
       const sprite = this.troopSprites.get(troop.id);
@@ -1512,18 +1939,62 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateTroopProjectiles(): void {
-    if (!this.troopProjectileGraphics) {
-      this.troopProjectileGraphics = this.add.graphics().setDepth(15);
-    }
-    this.troopProjectileGraphics.clear();
-
     const projs = this.troopSystem.getProjectiles();
+    const activeProjIds = new Set<string>();
+
     for (const proj of projs) {
-      // Green glow projectile
-      this.troopProjectileGraphics.fillStyle(0x44ff44, 0.3);
-      this.troopProjectileGraphics.fillCircle(proj.x, proj.y, 6);
-      this.troopProjectileGraphics.fillStyle(0x88ffaa, 0.9);
-      this.troopProjectileGraphics.fillCircle(proj.x, proj.y, 3);
+      const projKey = `${proj.troopId}_${proj.targetId}`;
+      activeProjIds.add(projKey);
+
+      let sprite = this.troopProjSprites.get(projKey);
+      const texKey = GameScene.CHAR_PROJ_MAP[proj.troopId] ?? 'proj_arrow';
+
+      if (!sprite) {
+        const finalTex = this.textures.exists(texKey) ? texKey : 'projectile-placeholder';
+        sprite = this.add.sprite(proj.x, proj.y, finalTex).setDepth(15).setScale(0.7);
+        this.troopProjSprites.set(projKey, sprite);
+      }
+
+      sprite.setPosition(proj.x, proj.y);
+      // Rotate toward target
+      const troop = this.troopSystem.getTroops().find(t => t.id === proj.troopId);
+      if (troop) {
+        const angle = Math.atan2(proj.y - troop.homeWorldY, proj.x - troop.homeWorldX);
+        sprite.setRotation(angle);
+      }
+    }
+
+    // Remove sprites for projectiles that no longer exist
+    for (const [key, sprite] of this.troopProjSprites) {
+      if (!activeProjIds.has(key)) {
+        sprite.destroy();
+        this.troopProjSprites.delete(key);
+      }
+    }
+  }
+
+  private spawnMeleeHitParticle(x: number, y: number, troopType: string): void {
+    const texKey = GameScene.TYPE_HIT_MAP[troopType] ?? 'hit_sparkle';
+    if (!this.textures.exists(texKey)) return;
+
+    const sprite = this.add.sprite(x, y, texKey)
+      .setDepth(20)
+      .setScale(0.5)
+      .setAlpha(0.9);
+    this.hitParticles.push({ sprite, life: 0.4 });
+  }
+
+  private updateHitParticles(deltaSec: number): void {
+    for (let i = this.hitParticles.length - 1; i >= 0; i--) {
+      const p = this.hitParticles[i];
+      p.life -= deltaSec;
+      p.sprite.setAlpha(Math.max(0, p.life / 0.4));
+      p.sprite.setScale(0.5 + (0.4 - p.life) * 0.8);
+      p.sprite.y -= deltaSec * 20;
+      if (p.life <= 0) {
+        p.sprite.destroy();
+        this.hitParticles.splice(i, 1);
+      }
     }
   }
 }

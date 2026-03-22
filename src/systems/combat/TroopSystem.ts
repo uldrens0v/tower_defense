@@ -304,6 +304,7 @@ export class TroopSystem {
       // Direct damage
       target.currentHP -= finalDamage;
       eventBus.emit('enemy:damaged', target, finalDamage);
+      eventBus.emit('troop:meleeHit', target.worldX, target.worldY, troop.character.data.type);
       if (target.currentHP <= 0) {
         target.currentHP = 0;
         eventBus.emit('enemy:killed', target);

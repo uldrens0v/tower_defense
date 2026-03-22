@@ -118,11 +118,11 @@ export class MathChallenge {
   private container: Phaser.GameObjects.Container;
   private inputText = '';
   private inputDisplay!: Phaser.GameObjects.Text;
-  private onComplete: (success: boolean) => void;
+  private onComplete: (success: boolean, challenge: MathChallenge) => void;
   private answer: number;
   private keyHandler: ((event: KeyboardEvent) => void) | null = null;
 
-  constructor(scene: Phaser.Scene, difficulty: number, onComplete: (success: boolean) => void) {
+  constructor(scene: Phaser.Scene, difficulty: number, onComplete: (success: boolean, challenge: MathChallenge) => void) {
     this.scene = scene;
     this.onComplete = onComplete;
     this.container = scene.add.container(0, 0).setDepth(400);
@@ -201,8 +201,9 @@ export class MathChallenge {
         this.inputText = this.inputText.slice(0, -1);
         this.updateDisplay();
       } else if (event.key === 'Escape') {
+        this.removeKeyHandler();
         this.destroy();
-        this.onComplete(false);
+        this.onComplete(false, this);
       } else if (/^[0-9\-.]$/.test(event.key) && this.inputText.length < 10) {
         this.inputText += event.key;
         this.updateDisplay();
@@ -219,30 +220,58 @@ export class MathChallenge {
     const userAnswer = parseFloat(this.inputText);
     const success = !isNaN(userAnswer) && Math.abs(userAnswer - this.answer) < 0.01;
 
-    // Show result briefly
-    const resultText = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 60,
-      success ? '¡Correcto!' : `Incorrecto. La respuesta era ${this.answer}`, {
+    // Remove key handler immediately to prevent double submit
+    this.removeKeyHandler();
+
+    // Replace challenge content with result — callback will show reward in-place
+    this.container.removeAll(true);
+
+    // Keep overlay
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(0x000000, 0.8);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.container.add(overlay);
+
+    // Brief correctness flash
+    const flash = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20,
+      success ? '¡Correcto!' : `Incorrecto (era ${this.answer})`, {
         fontSize: '16px', color: success ? '#44ff44' : '#ff4444', fontFamily: 'monospace',
       }).setOrigin(0.5).setDepth(401);
+    this.container.add(flash);
 
-    this.scene.time.delayedCall(1200, () => {
-      resultText.destroy();
-      this.destroy();
-      this.onComplete(success);
+    this.scene.time.delayedCall(800, () => {
+      this.onComplete(success, this);
     });
+  }
 
-    // Remove key handler immediately to prevent double submit
+  /** Show reward/result replacing the challenge panel content */
+  showResult(title: string, lines: string[], autoCloseMs = 2000): void {
+    this.container.removeAll(true);
+
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(0x000000, 0.7);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.container.add(overlay);
+
+    const text = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, `${title}\n\n${lines.join('\n')}`, {
+      fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace',
+      backgroundColor: '#000000cc', padding: { x: 25, y: 18 },
+      align: 'center',
+    }).setOrigin(0.5).setDepth(401);
+    this.container.add(text);
+
+    this.scene.time.delayedCall(autoCloseMs, () => this.destroy());
+  }
+
+  private removeKeyHandler(): void {
     if (this.keyHandler) {
       window.removeEventListener('keydown', this.keyHandler);
       this.keyHandler = null;
     }
   }
 
-  private destroy(): void {
-    if (this.keyHandler) {
-      window.removeEventListener('keydown', this.keyHandler);
-      this.keyHandler = null;
-    }
+  destroy(): void {
+    this.removeKeyHandler();
     this.container.destroy();
   }
 }
@@ -259,11 +288,11 @@ export class TypingChallenge {
   private timerText!: Phaser.GameObjects.Text;
   private timeLeft = 10;
   private timerEvent: Phaser.Time.TimerEvent | null = null;
-  private onComplete: (success: boolean) => void;
+  private onComplete: (success: boolean, challenge: TypingChallenge) => void;
   private keyHandler: ((event: KeyboardEvent) => void) | null = null;
   private finished = false;
 
-  constructor(scene: Phaser.Scene, onComplete: (success: boolean) => void) {
+  constructor(scene: Phaser.Scene, onComplete: (success: boolean, challenge: TypingChallenge) => void) {
     this.scene = scene;
     this.onComplete = onComplete;
     this.container = scene.add.container(0, 0).setDepth(400);
@@ -424,15 +453,53 @@ export class TypingChallenge {
       this.keyHandler = null;
     }
 
-    const resultText = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 80,
+    // Replace challenge content with brief flash
+    this.container.removeAll(true);
+
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(0x000000, 0.8);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.container.add(overlay);
+
+    const flash = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20,
       success ? '¡Jefe derrotado!' : 'No pudiste vencer al jefe...', {
         fontSize: '18px', color: success ? '#44ff44' : '#ff4444', fontFamily: 'monospace',
       }).setOrigin(0.5).setDepth(401);
+    this.container.add(flash);
 
-    this.scene.time.delayedCall(1500, () => {
-      resultText.destroy();
-      this.container.destroy();
-      this.onComplete(success);
+    this.scene.time.delayedCall(800, () => {
+      this.onComplete(success, this);
     });
+  }
+
+  /** Show reward/result replacing the challenge panel content */
+  showResult(title: string, lines: string[], autoCloseMs = 2000): void {
+    this.container.removeAll(true);
+
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(0x000000, 0.7);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.container.add(overlay);
+
+    const text = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, `${title}\n\n${lines.join('\n')}`, {
+      fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace',
+      backgroundColor: '#000000cc', padding: { x: 25, y: 18 },
+      align: 'center',
+    }).setOrigin(0.5).setDepth(401);
+    this.container.add(text);
+
+    this.scene.time.delayedCall(autoCloseMs, () => this.destroy());
+  }
+
+  destroy(): void {
+    if (this.keyHandler) {
+      window.removeEventListener('keydown', this.keyHandler);
+      this.keyHandler = null;
+    }
+    if (this.timerEvent) {
+      this.timerEvent.destroy();
+      this.timerEvent = null;
+    }
+    this.container.destroy();
   }
 }
