@@ -112,6 +112,7 @@ export class BootScene extends Phaser.Scene {
     this.createTroopSprites();
     this.createTowerLevelVariants();
     this.createThemedTiles();
+    this.createProjectileParticles();
     this.scene.start('PreloadScene');
   }
 
@@ -554,5 +555,67 @@ export class BootScene extends Phaser.Scene {
       // Leaf
       g.fillStyle(0x44aa44); g.fillTriangle(16, 20, 6, 30, 26, 30);
     });
+  }
+
+  private createProjectileParticles(): void {
+    const particles: { key: string; color: number; glowColor: number; shape: 'circle' | 'diamond' | 'star' | 'spark' }[] = [
+      { key: 'particle-arrow', color: 0xffdd44, glowColor: 0xffaa00, shape: 'spark' },
+      { key: 'particle-cannon', color: 0xff6600, glowColor: 0xff3300, shape: 'circle' },
+      { key: 'particle-antiair', color: 0x44ccff, glowColor: 0x2288cc, shape: 'diamond' },
+      { key: 'particle-magic', color: 0xcc44ff, glowColor: 0x8822cc, shape: 'star' },
+      { key: 'particle-impact', color: 0xffffff, glowColor: 0xffffaa, shape: 'circle' },
+    ];
+
+    for (const p of particles) {
+      const size = 16;
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      const cx = size / 2;
+      const cy = size / 2;
+
+      // Outer glow
+      g.fillStyle(p.glowColor, 0.2);
+      g.fillCircle(cx, cy, size / 2);
+      g.fillStyle(p.glowColor, 0.4);
+      g.fillCircle(cx, cy, size / 3);
+
+      // Main shape
+      g.fillStyle(p.color, 0.9);
+      switch (p.shape) {
+        case 'circle':
+          g.fillCircle(cx, cy, size / 4);
+          break;
+        case 'diamond':
+          g.fillPoints([
+            new Phaser.Geom.Point(cx, cy - size / 3),
+            new Phaser.Geom.Point(cx + size / 4, cy),
+            new Phaser.Geom.Point(cx, cy + size / 3),
+            new Phaser.Geom.Point(cx - size / 4, cy),
+          ], true);
+          break;
+        case 'star': {
+          const pts: Phaser.Geom.Point[] = [];
+          for (let i = 0; i < 5; i++) {
+            const a1 = (i * 72 - 90) * Math.PI / 180;
+            const a2 = ((i * 72 + 36) - 90) * Math.PI / 180;
+            pts.push(new Phaser.Geom.Point(cx + Math.cos(a1) * size / 3, cy + Math.sin(a1) * size / 3));
+            pts.push(new Phaser.Geom.Point(cx + Math.cos(a2) * size / 6, cy + Math.sin(a2) * size / 6));
+          }
+          g.fillPoints(pts, true);
+          break;
+        }
+        case 'spark':
+          // Cross/spark shape
+          g.fillRect(cx - 1, cy - size / 3, 2, size * 2 / 3);
+          g.fillRect(cx - size / 3, cy - 1, size * 2 / 3, 2);
+          break;
+      }
+
+      // Bright white core
+      g.fillStyle(0xffffff, 0.8);
+      g.fillCircle(cx, cy, 2);
+
+      g.generateTexture(p.key, size, size);
+      g.destroy();
+    }
   }
 }

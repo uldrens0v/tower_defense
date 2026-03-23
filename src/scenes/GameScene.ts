@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { eventBus } from '../core/EventBus';
-import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MAP_OFFSET_Y, MAP_HEIGHT, BOTTOM_BAR_Y } from '../core/Constants';
+import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT, BOTTOM_BAR_Y } from '../core/Constants';
 import { GridMap, TileType } from '../core/GridMap';
 import type { LevelData } from '../core/GridMap';
 import { SaveSystem } from '../core/SaveSystem';
@@ -18,6 +18,7 @@ import type { ItemData } from '../systems/dungeon/EquipmentSystem';
 import { CommanderSystem } from '../systems/commander/CommanderSystem';
 import { ProgressionSystem } from '../systems/progression/ProgressionSystem';
 import { HUD } from '../ui/HUD';
+import { TroopSidePanel } from '../ui/TroopSidePanel';
 import { MenuPanel } from '../ui/MenuPanel';
 import { DungeonUI } from '../ui/DungeonUI';
 import { CollectionUI } from '../ui/CollectionUI';
@@ -84,6 +85,7 @@ export class GameScene extends Phaser.Scene {
 
   // UI
   private hud!: HUD;
+  private troopSidePanel!: TroopSidePanel;
   private menuPanel!: MenuPanel;
   private dungeonUI!: DungeonUI;
   private collectionUI!: CollectionUI;
@@ -361,6 +363,8 @@ export class GameScene extends Phaser.Scene {
 
   private createUI(): void {
     this.hud = new HUD(this);
+    this.troopSidePanel = new TroopSidePanel(this);
+    this.troopSidePanel.setUltChargeCost(this.troopSystem.getUltChargeCost());
     this.menuPanel = new MenuPanel(this);
     this.menuPanel.hasTowers = () => this.defenseSystem.getTowers().length > 0;
     this.menuPanel.isRoundActive = () => this.gameState === 'playing';
@@ -398,7 +402,7 @@ export class GameScene extends Phaser.Scene {
     const fontSize = touch ? '10px' : '9px';
     const btnY = BOTTOM_BAR_Y; // stick to bottom edge
     const btnSpacing = touch ? 118 : 120;
-    const btnStartX = touch ? 190 : 200;
+    const btnStartX = (touch ? 190 : 200) + MAP_OFFSET_X;
 
     AVAILABLE_TOWERS.forEach((tower, i) => {
       const btnX = btnStartX + i * btnSpacing;
@@ -852,6 +856,7 @@ export class GameScene extends Phaser.Scene {
   /** Hide all game UI (HUD, bottom bar, start button, menu btn) for submenus */
   private hideGameUI(): void {
     this.hud.hide();
+    this.troopSidePanel.hide();
     if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
     if (this.menuBtn) this.menuBtn.setVisible(false);
     if (this.autoplayBtn) this.autoplayBtn.setVisible(false);
@@ -865,6 +870,7 @@ export class GameScene extends Phaser.Scene {
   /** Show all game UI after returning from a submenu */
   private showGameUI(): void {
     this.hud.show();
+    this.troopSidePanel.show();
     if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
     if (this.menuBtn) this.menuBtn.setVisible(true);
     if (this.autoplayBtn) this.autoplayBtn.setVisible(true);
@@ -979,6 +985,7 @@ export class GameScene extends Phaser.Scene {
     // Update troop system
     this.troopSystem.update(delta, this.activeEnemies);
     this.updateTroopSprites();
+    this.troopSidePanel.update(this.troopSystem.getTroops(), this.troopSystem.getUltimateCharges());
 
     // Update enemy sprites
     this.updateEnemySprites();
@@ -1220,6 +1227,23 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
+      // Spawn trail particles (VFX sparkles behind projectile)
+      if (Math.random() > 0.5) {
+        const spreadAngle = Math.random() * Math.PI * 2;
+        const spreadSpeed = 8 + Math.random() * 15;
+        this.vfxParticles.push({
+          x: x + (Math.random() - 0.5) * 4,
+          y: y + (Math.random() - 0.5) * 4,
+          vx: Math.cos(spreadAngle) * spreadSpeed,
+          vy: Math.sin(spreadAngle) * spreadSpeed,
+          life: 0.15 + Math.random() * 0.15,
+          maxLife: 0.3,
+          color: style.trailColor,
+          size: 1 + Math.random() * 1.5,
+          type: 'trail',
+        });
+      }
+
       // Store position for impact detection
       this.prevProjPositions.set(projKey, { x, y, towerId: proj.towerId });
     }
@@ -1246,19 +1270,44 @@ export class GameScene extends Phaser.Scene {
   private spawnImpactEffect(x: number, y: number, color: number): void {
     // Expanding ring
     this.impactRings.push({ x, y, radius: 2, maxRadius: 18, life: 0.3, color });
+    // Second smaller ring (double ring)
+    this.impactRings.push({ x, y, radius: 1, maxRadius: 10, life: 0.2, color: 0xffffff });
+
+    // Central flash
+    this.vfxParticles.push({
+      x, y, vx: 0, vy: 0,
+      life: 0.12, maxLife: 0.12,
+      color: 0xffffff, size: 6, type: 'impact',
+    });
 
     // Burst of particles
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
-      const speed = 40 + Math.random() * 60;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
+      const speed = 40 + Math.random() * 70;
       this.vfxParticles.push({
         x, y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 20,
-        life: 0.25 + Math.random() * 0.2,
-        maxLife: 0.45,
+        vy: Math.sin(angle) * speed - 25,
+        life: 0.25 + Math.random() * 0.25,
+        maxLife: 0.5,
         color,
-        size: 2 + Math.random() * 2,
+        size: 1.5 + Math.random() * 2.5,
+        type: 'impact',
+      });
+    }
+
+    // Sparks (small, fast, bright)
+    for (let i = 0; i < 4; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 60 + Math.random() * 40;
+      this.vfxParticles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 30,
+        life: 0.1 + Math.random() * 0.1,
+        maxLife: 0.2,
+        color: 0xffffff,
+        size: 1 + Math.random(),
         type: 'impact',
       });
     }
@@ -1880,7 +1929,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.setWaveEnemies(this.buildWaveEnemyCounts(wave.enemies));
 
     // Start wave button — top bar, between round info and wall HP
-    this.startWaveBtn = this.add.text(512, 10, '⚔ INICIAR RONDA [ESPACIO]', {
+    this.startWaveBtn = this.add.text(MAP_OFFSET_X + 512, 10, '⚔ INICIAR RONDA [ESPACIO]', {
       fontSize: '13px', color: '#e0e0e0', fontFamily: 'monospace',
       backgroundColor: '#2a5a2a', padding: { x: 12, y: 6 },
     }).setOrigin(0.5, 0).setDepth(250).setInteractive().setAlpha(0);
@@ -1898,7 +1947,7 @@ export class GameScene extends Phaser.Scene {
 
     // Show shortcut hint on first wave
     if (waveIndex === 0 && this.currentLevelIndex === 0) {
-      const hint = this.add.text(512, 50, 'Atajos: 1-4 Torres | A Auto | S Velocidad | Click-der Vender torre', {
+      const hint = this.add.text(MAP_OFFSET_X + 512, 50, 'Atajos: 1-4 Torres | A Auto | S Velocidad | Click-der Vender torre', {
         fontSize: '9px', color: '#666688', fontFamily: 'monospace',
       }).setOrigin(0.5, 0).setDepth(250);
       this.time.delayedCall(8000, () => {
@@ -1935,7 +1984,7 @@ export class GameScene extends Phaser.Scene {
     const bgColor = this.autoplay ? '#2a5a2a' : '#333333';
     const textColor = this.autoplay ? '#8fbc8f' : '#888888';
 
-    this.autoplayBtn = this.add.text(512, 32, label, {
+    this.autoplayBtn = this.add.text(MAP_OFFSET_X + 512, 32, label, {
       fontSize: '11px', color: textColor, fontFamily: 'monospace',
       backgroundColor: bgColor, padding: { x: 8, y: 3 },
     }).setOrigin(0.5, 0).setDepth(250).setInteractive();
@@ -1959,7 +2008,7 @@ export class GameScene extends Phaser.Scene {
     const touch = this.isTouch();
     const bw = touch ? 110 : 100;
     const bh = touch ? 36 : 24;
-    const cx = touch ? 910 : 900;
+    const cx = (touch ? 910 : 900) + MAP_OFFSET_X;
     const cy = BOTTOM_BAR_Y;
     const cont = this.add.container(cx, cy).setDepth(100);
 
@@ -2006,7 +2055,7 @@ export class GameScene extends Phaser.Scene {
     const touch = this.isTouch();
     const bw = touch ? 90 : 80;
     const bh = touch ? 36 : 24;
-    const cx = touch ? 800 : 790;
+    const cx = (touch ? 800 : 790) + MAP_OFFSET_X;
     const cy = BOTTOM_BAR_Y;
     const cont = this.add.container(cx, cy).setDepth(100);
 
@@ -2128,7 +2177,7 @@ export class GameScene extends Phaser.Scene {
     const touch = this.isTouch();
     const btnW = touch ? 110 : 100;
     const btnH = touch ? 36 : 30;
-    const btnX = 70;
+    const btnX = MAP_OFFSET_X + 70;
     const btnY = BOTTOM_BAR_Y;
     const container = this.add.container(btnX, btnY).setDepth(100);
 
@@ -2196,7 +2245,7 @@ export class GameScene extends Phaser.Scene {
     const arrowH = 24;
     const contentH = pageItems.length * itemH + 10;
     const dropH = contentH + (hasPrevPage ? arrowH : 0) + (hasNextPage ? arrowH : 0);
-    const dropX = 20;
+    const dropX = MAP_OFFSET_X + 20;
     const dropY = MAP_OFFSET_Y + MAP_HEIGHT - dropH - 4;
 
     // Background
@@ -3350,7 +3399,7 @@ export class GameScene extends Phaser.Scene {
   // ---- Kill counter ----
   private updateWaveKillText(): void {
     if (!this.waveKillText) {
-      this.waveKillText = this.add.text(GAME_WIDTH / 2, MAP_OFFSET_Y + 4, '', {
+      this.waveKillText = this.add.text(MAP_OFFSET_X + 512, MAP_OFFSET_Y + 4, '', {
         fontSize: '10px', color: '#cc8888', fontFamily: 'monospace',
       }).setOrigin(0.5, 0).setDepth(101);
     }
@@ -3363,7 +3412,7 @@ export class GameScene extends Phaser.Scene {
     const levelData = levelsData[this.currentLevelIndex] as LevelData;
     const name = levelData?.name ?? `Nivel ${this.currentLevelIndex + 1}`;
     const color = GameScene.LEVEL_NAME_COLORS[this.currentLevelIndex] ?? '#ffffff';
-    this.levelNameText = this.add.text(GAME_WIDTH / 2 + 100, 14, name, {
+    this.levelNameText = this.add.text(MAP_OFFSET_X + 612, 14, name, {
       fontSize: '11px', color, fontFamily: 'monospace', fontStyle: 'bold',
     }).setOrigin(0.5, 0).setDepth(101);
   }

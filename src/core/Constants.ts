@@ -1,6 +1,9 @@
-export const GAME_WIDTH = 1024;
+export const GAME_WIDTH = 1200;
 export const GAME_HEIGHT = 660;
 export const TILE_SIZE = 32;
+
+/** Horizontal offset where the map starts (right of the left side panel) */
+export const MAP_OFFSET_X = 176;
 
 /** Vertical offset where the map/scenario starts (below the top HUD bar) */
 export const MAP_OFFSET_Y = 40;

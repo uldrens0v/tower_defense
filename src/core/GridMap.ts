@@ -1,4 +1,4 @@
-import { TILE_SIZE, MAP_OFFSET_Y } from './Constants';
+import { TILE_SIZE, MAP_OFFSET_X, MAP_OFFSET_Y } from './Constants';
 
 export const TileType = {
   PATH: 0,
@@ -86,14 +86,14 @@ export class GridMap {
 
   worldToGrid(worldX: number, worldY: number): { x: number; y: number } {
     return {
-      x: Math.floor(worldX / TILE_SIZE),
+      x: Math.floor((worldX - MAP_OFFSET_X) / TILE_SIZE),
       y: Math.floor((worldY - MAP_OFFSET_Y) / TILE_SIZE),
     };
   }
 
   gridToWorld(gridX: number, gridY: number): { x: number; y: number } {
     return {
-      x: gridX * TILE_SIZE + TILE_SIZE / 2,
+      x: gridX * TILE_SIZE + TILE_SIZE / 2 + MAP_OFFSET_X,
       y: gridY * TILE_SIZE + TILE_SIZE / 2 + MAP_OFFSET_Y,
     };
   }

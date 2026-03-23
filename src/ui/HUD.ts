@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, MAP_OFFSET_Y, MAP_HEIGHT } from '../core/Constants';
+import { GAME_WIDTH, MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT } from '../core/Constants';
 import { eventBus } from '../core/EventBus';
 
 export interface WaveEnemyCount {
@@ -47,13 +47,13 @@ export class HUD {
     this.wallHPBar = scene.add.graphics();
     this.container.add(this.wallHPBar);
 
-    this.wallHPText = scene.add.text(720, 8, '🏰 100/100', {
+    this.wallHPText = scene.add.text(MAP_OFFSET_X + 720, 8, '🏰 100/100', {
       fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(this.wallHPText);
 
     // Wave info (left side, replaces old "Ola: N")
-    this.waveText = scene.add.text(10, 8, 'Ronda 0', {
+    this.waveText = scene.add.text(MAP_OFFSET_X + 10, 8, 'Ronda 0', {
       fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace',
       backgroundColor: '#00000000', padding: { x: 4, y: 2 },
     }).setInteractive();
@@ -69,7 +69,7 @@ export class HUD {
       this.hideWaveTooltip();
     });
 
-    this.timerText = scene.add.text(10, 26, '', {
+    this.timerText = scene.add.text(MAP_OFFSET_X + 10, 26, '', {
       fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
     });
     this.container.add(this.timerText);
@@ -155,7 +155,7 @@ export class HUD {
 
     this.waveTooltip = this.scene.add.container(0, 0).setDepth(210);
 
-    const tooltipX = 10;
+    const tooltipX = MAP_OFFSET_X + 10;
     const tooltipY = 42;
     const rowH = 28;
     const tooltipW = 180;
@@ -258,7 +258,7 @@ export class HUD {
   private drawWallHP(): void {
     this.wallHPBar.clear();
     const barWidth = 140;
-    const barX = 720 - barWidth / 2;
+    const barX = MAP_OFFSET_X + 720 - barWidth / 2;
     const pct = this.wallHP / this.wallMaxHP;
 
     // Background

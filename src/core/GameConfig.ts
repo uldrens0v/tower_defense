@@ -4,7 +4,7 @@ import { PreloadScene } from '../scenes/PreloadScene';
 import { GameScene } from '../scenes/GameScene';
 import { GAME_WIDTH, GAME_HEIGHT } from './Constants';
 
-export { GAME_WIDTH, GAME_HEIGHT, TILE_SIZE, GRID_COLS, GRID_ROWS, MAP_OFFSET_Y, MAP_WIDTH, MAP_HEIGHT, BOTTOM_BAR_Y } from './Constants';
+export { GAME_WIDTH, GAME_HEIGHT, TILE_SIZE, GRID_COLS, GRID_ROWS, MAP_OFFSET_X, MAP_OFFSET_Y, MAP_WIDTH, MAP_HEIGHT, BOTTOM_BAR_Y } from './Constants';
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
