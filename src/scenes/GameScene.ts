@@ -22,7 +22,7 @@ import { CollectionUI } from '../ui/CollectionUI';
 import type { TowerData } from '../entities/towers/TowerEntity';
 import { TargetType } from '../entities/towers/TowerEntity';
 import { SoundFX } from '../core/SoundFX';
-import { MathChallenge, TypingChallenge } from '../ui/DungeonChallenges';
+import { MathChallenge, TypingChallenge, MemoryChallenge } from '../ui/DungeonChallenges';
 import { TroopSystem } from '../systems/combat/TroopSystem';
 import { TutorialPanel } from '../ui/TutorialPanel';
 
@@ -104,6 +104,8 @@ export class GameScene extends Phaser.Scene {
   private gamePaused = false;
   private tutorialActive = true;
   private inSubmenu = false;
+  private autoplay = false;
+  private autoplayBtn: Phaser.GameObjects.Text | null = null;
 
   // Speed control
   private speedMultiplier = 1;
@@ -134,6 +136,28 @@ export class GameScene extends Phaser.Scene {
   private troopProjSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   // Melee hit particles
   private hitParticles: { sprite: Phaser.GameObjects.Sprite; life: number }[] = [];
+
+  // VFX particles (trails, impacts, death effects)
+  private vfxParticles: {
+    x: number; y: number; vx: number; vy: number;
+    life: number; maxLife: number;
+    color: number; size: number;
+    type: 'trail' | 'impact' | 'death' | 'slash';
+  }[] = [];
+  private vfxGraphics: Phaser.GameObjects.Graphics | null = null;
+  // Projectile trail history
+  private projTrails: Map<string, { x: number; y: number }[]> = new Map();
+  // Impact rings
+  private impactRings: { x: number; y: number; radius: number; maxRadius: number; life: number; color: number }[] = [];
+  // Ultimate VFX
+  private ultimateEffects: {
+    type: string; x: number; y: number; life: number; maxLife: number;
+    radius: number; color: number; targetX?: number; targetY?: number;
+  }[] = [];
+  // Persistent glow on troops with active buff ultimates
+  private ultimateGlows: Map<string, { color: number }> = new Map();
+  // Ultimate charge bar graphics
+  private ultChargeGraphics: Phaser.GameObjects.Graphics | null = null;
 
   // Projectile texture per character
   private static readonly CHAR_PROJ_MAP: Record<string, string> = {
@@ -241,10 +265,16 @@ export class GameScene extends Phaser.Scene {
     for (let y = 0; y < this.gridMap.rows; y++) {
       for (let x = 0; x < this.gridMap.cols; x++) {
         const tile = this.gridMap.getTile(x, y);
-        let textureKey = 'tile-buildable';
-        if (tile === TileType.PATH || tile === TileType.SPAWN || tile === TileType.EXIT) textureKey = 'tile-path';
-        else if (tile === TileType.WALL) textureKey = 'tile-wall';
-        else if (tile === TileType.DECORATION) textureKey = 'tile-decoration';
+        const theme = this.gridMap.getTheme();
+        const suffix = (theme !== 'prairie' && theme !== 'forest' && theme !== 'mountain' && theme !== 'abyss' && theme !== 'chaos') ? `-${theme}` : '';
+        let textureKey = 'tile-buildable' + suffix;
+        if (tile === TileType.PATH || tile === TileType.SPAWN || tile === TileType.EXIT) textureKey = 'tile-path' + suffix;
+        else if (tile === TileType.WALL) textureKey = 'tile-wall' + suffix;
+        else if (tile === TileType.DECORATION) textureKey = 'tile-decoration' + suffix;
+        // Fallback to default if themed texture doesn't exist
+        if (!this.textures.exists(textureKey)) {
+          textureKey = textureKey.replace(suffix, '');
+        }
 
         const world = this.gridMap.gridToWorld(x, y);
         const sprite = this.add.sprite(world.x, world.y, textureKey).setDepth(0);
@@ -282,8 +312,12 @@ export class GameScene extends Phaser.Scene {
     this.hud = new HUD(this);
     this.menuPanel = new MenuPanel(this);
     this.menuPanel.hasTowers = () => this.defenseSystem.getTowers().length > 0;
+    this.menuPanel.isRoundActive = () => this.gameState === 'playing';
     this.dungeonUI = new DungeonUI(this);
     this.collectionUI = new CollectionUI(this);
+
+    // Autoplay button (always visible in top bar)
+    this.updateAutoplayBtn();
 
     const touch = this.isTouch();
 
@@ -389,7 +423,8 @@ export class GameScene extends Phaser.Scene {
             this.clearHoverRange();
           });
 
-          zone.on('pointerdown', () => {
+          zone.on('pointerdown', (_pointer: Phaser.Input.Pointer) => {
+            if (_pointer.rightButtonDown()) return; // right-click cancels, not places
             if (this.gameState !== 'playing' && this.gameState !== 'preparing') return;
             if (this.menuPanel.isVisible()) return;
 
@@ -442,6 +477,22 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // Right-click cancels tower/troop selection
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown()) {
+        if (this.selectedTowerIndex >= 0 || this.selectedCharacterId) {
+          this.selectedTowerIndex = -1;
+          this.selectedCharacterId = null;
+          this.updateTowerButtonHighlights();
+          this.clearPlacementPreview();
+          this.hideTroopDropdown();
+        }
+      }
+    });
+
+    // Prevent browser context menu on the game canvas
+    this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   private setupEventListeners(): void {
@@ -470,6 +521,20 @@ export class GameScene extends Phaser.Scene {
 
     eventBus.on('enemy:damaged', () => {
       SoundFX.enemyHit();
+    });
+
+    // Ultimate ability VFX
+    eventBus.on('ultimate:activated', (data: unknown) => {
+      this.spawnUltimateVFX(data as {
+        troopId: string; charId: string; type: string;
+        x: number; y: number; radius: number;
+        targetX?: number; targetY?: number; duration?: number;
+      });
+    });
+
+    eventBus.on('ultimate:ended', (data: unknown) => {
+      const d = data as { troopId: string };
+      this.ultimateGlows.delete(d.troopId);
     });
 
     eventBus.on('enemy:reached_end', (_enemy: unknown) => {
@@ -506,23 +571,43 @@ export class GameScene extends Phaser.Scene {
           break;
 
         case 'combat': {
-          // Gold reward
           const goldReward = 50 + this.currentWaveIndex * 15;
-          this.gold += goldReward;
-          this.updateResources();
-          this.showDungeonReward('⚔ Combate', [`+${goldReward} Oro`]);
+          new MemoryChallenge(this, 1, (success, challenge) => {
+            if (success) {
+              this.gold += goldReward;
+              this.updateResources();
+              challenge.showResult('⚔ Victoria', [`+${goldReward} Oro`]);
+            } else {
+              this.wallHP = Math.max(0, this.wallHP - 25);
+              eventBus.emit('wall:damaged', { current: this.wallHP, max: this.wallMaxHP });
+              challenge.showResult('⚔ Derrota', ['La muralla recibe 25 de daño']);
+              if (this.wallHP <= 0) {
+                this.time.delayedCall(2600, () => this.showGameOver());
+              }
+            }
+          });
           break;
         }
 
         case 'elite': {
-          // More gold + chance for character
           const eliteGold = 100 + this.currentWaveIndex * 20;
-          this.gold += eliteGold;
-          this.updateResources();
-          const charResult = this.tryRollCharacter();
-          const lines = [`+${eliteGold} Oro`];
-          if (charResult) lines.push(`¡Nuevo: ${charResult}!`);
-          this.showDungeonReward('💀 Élite', lines);
+          new MemoryChallenge(this, 3, (success, challenge) => {
+            if (success) {
+              this.gold += eliteGold;
+              this.updateResources();
+              const charResult = this.tryRollCharacter();
+              const lines = [`+${eliteGold} Oro`];
+              if (charResult) lines.push(`¡Nuevo: ${charResult}!`);
+              challenge.showResult('💀 Victoria Élite', lines);
+            } else {
+              this.wallHP = Math.max(0, this.wallHP - 25);
+              eventBus.emit('wall:damaged', { current: this.wallHP, max: this.wallMaxHP });
+              challenge.showResult('💀 Derrota', ['La muralla recibe 25 de daño']);
+              if (this.wallHP <= 0) {
+                this.time.delayedCall(2600, () => this.showGameOver());
+              }
+            }
+          });
           break;
         }
 
@@ -608,7 +693,8 @@ export class GameScene extends Phaser.Scene {
         }
         ownedInstances.set(char.data.id, char);
       }
-      this.collectionUI.show(this.characterManager.getAllCharacterData(), ownedIds, ultProgress, ownedInstances);
+      const ultCharges = this.troopSystem ? this.troopSystem.getUltimateCharges() : new Map();
+      this.collectionUI.show(this.characterManager.getAllCharacterData(), ownedIds, ultProgress, ownedInstances, ultCharges);
     });
 
     eventBus.on('collection:closed', () => {
@@ -620,6 +706,7 @@ export class GameScene extends Phaser.Scene {
     eventBus.on('game:pause', () => {
       this.gamePaused = true;
       this.physics.pause();
+      this.sound.pauseAll();
       this.hideScenario();
       this.hideGameUI();
     });
@@ -633,6 +720,7 @@ export class GameScene extends Phaser.Scene {
     eventBus.on('game:resume', () => {
       this.gamePaused = false;
       this.physics.resume();
+      this.sound.resumeAll();
       this.showScenario();
       this.showGameUI();
     });
@@ -673,6 +761,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.hide();
     if (this.startWaveBtn) this.startWaveBtn.setVisible(false);
     if (this.menuBtn) this.menuBtn.setVisible(false);
+    if (this.autoplayBtn) this.autoplayBtn.setVisible(false);
     for (const c of this.towerButtons) c.setVisible(false);
     for (const c of this.bottomBarContainers) c.setVisible(false);
     this.hideTroopDropdown();
@@ -685,6 +774,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.show();
     if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
     if (this.menuBtn) this.menuBtn.setVisible(true);
+    if (this.autoplayBtn) this.autoplayBtn.setVisible(true);
     for (const c of this.towerButtons) c.setVisible(true);
     for (const c of this.bottomBarContainers) c.setVisible(true);
   }
@@ -721,6 +811,11 @@ export class GameScene extends Phaser.Scene {
     const wave = waves[waveIndex];
 
     eventBus.emit('wave:start', waveIndex + 1);
+
+    // Reset ultimate charges for new round
+    if (this.troopSystem) {
+      this.troopSystem.resetUltimateCharges();
+    }
 
     // Update HUD enemy counts for this wave
     this.hud.setWaveEnemies(this.buildWaveEnemyCounts(wave.enemies));
@@ -791,6 +886,7 @@ export class GameScene extends Phaser.Scene {
     this.updateProjectileSprites();
     this.updateTroopProjectiles();
     this.updateHitParticles(delta / 1000);
+    this.updateUltimateVFX(delta / 1000);
 
     // Clean up dead enemies
     this.cleanDeadEnemies();
@@ -885,14 +981,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   // Projectile visual config per tower type
-  private static readonly PROJ_STYLES: Record<string, { color: number; size: number; shape: 'circle' | 'diamond' | 'bolt' | 'star' }> = {
-    tower_arrow:   { color: 0xffdd44, size: 4, shape: 'bolt' },
-    tower_cannon:  { color: 0xff6600, size: 6, shape: 'circle' },
-    tower_antiair: { color: 0x44ccff, size: 5, shape: 'diamond' },
-    tower_magic:   { color: 0xcc44ff, size: 5, shape: 'star' },
+  private static readonly PROJ_STYLES: Record<string, { color: number; size: number; shape: 'circle' | 'diamond' | 'bolt' | 'star'; trailColor: number; trailLen: number }> = {
+    tower_arrow:   { color: 0xffdd44, size: 5, shape: 'bolt',    trailColor: 0xffaa00, trailLen: 6 },
+    tower_cannon:  { color: 0xff6600, size: 7, shape: 'circle',  trailColor: 0xff3300, trailLen: 4 },
+    tower_antiair: { color: 0x44ccff, size: 6, shape: 'diamond', trailColor: 0x2288cc, trailLen: 8 },
+    tower_magic:   { color: 0xcc44ff, size: 6, shape: 'star',    trailColor: 0x8822cc, trailLen: 7 },
   };
 
   private projectileGraphics: Phaser.GameObjects.Graphics | null = null;
+  // Track previous projectile positions for impact detection
+  private prevProjPositions: Map<string, { x: number; y: number; towerId: string }> = new Map();
 
   private updateProjectileSprites(): void {
     // Clear old sprite-based projectiles (legacy cleanup)
@@ -907,58 +1005,161 @@ export class GameScene extends Phaser.Scene {
     this.projectileGraphics.clear();
 
     const projectiles = this.defenseSystem.getProjectiles();
+    const activeProjKeys = new Set<string>();
+    const time = this.time.now * 0.001;
+
     for (const proj of projectiles) {
-      const style = GameScene.PROJ_STYLES[proj.towerId] ?? { color: 0xffffff, size: 4, shape: 'circle' as const };
+      const style = GameScene.PROJ_STYLES[proj.towerId] ?? { color: 0xffffff, size: 5, shape: 'circle' as const, trailColor: 0x888888, trailLen: 4 };
       const g = this.projectileGraphics;
       const { x, y } = proj;
+      const projKey = proj.id;
+      activeProjKeys.add(projKey);
 
-      // Glow
-      g.fillStyle(style.color, 0.25);
-      g.fillCircle(x, y, style.size + 3);
+      // Update trail
+      let trail = this.projTrails.get(projKey);
+      if (!trail) {
+        trail = [];
+        this.projTrails.set(projKey, trail);
+      }
+      trail.push({ x, y });
+      if (trail.length > style.trailLen) trail.shift();
 
-      g.fillStyle(style.color, 0.9);
-      g.lineStyle(1, 0xffffff, 0.6);
+      // Draw trail with fading segments
+      for (let t = 0; t < trail.length - 1; t++) {
+        const alpha = (t / trail.length) * 0.5;
+        const width = (t / trail.length) * style.size * 0.8;
+        g.lineStyle(Math.max(1, width), style.trailColor, alpha);
+        g.beginPath();
+        g.moveTo(trail[t].x, trail[t].y);
+        g.lineTo(trail[t + 1].x, trail[t + 1].y);
+        g.strokePath();
+      }
+
+      // Outer glow (pulsing)
+      const pulse = 1 + Math.sin(time * 8) * 0.15;
+      g.fillStyle(style.color, 0.15);
+      g.fillCircle(x, y, (style.size + 5) * pulse);
+      g.fillStyle(style.color, 0.3);
+      g.fillCircle(x, y, (style.size + 2) * pulse);
+
+      // Main projectile
+      g.fillStyle(style.color, 0.95);
+      g.lineStyle(1.5, 0xffffff, 0.7);
 
       switch (style.shape) {
-        case 'circle':
+        case 'circle': {
           g.fillCircle(x, y, style.size);
           g.strokeCircle(x, y, style.size);
+          // Inner bright core
+          g.fillStyle(0xffffff, 0.6);
+          g.fillCircle(x, y, style.size * 0.4);
           break;
+        }
         case 'diamond': {
           const s = style.size;
-          g.fillPoints([
-            new Phaser.Geom.Point(x, y - s),
-            new Phaser.Geom.Point(x + s * 0.7, y),
-            new Phaser.Geom.Point(x, y + s),
-            new Phaser.Geom.Point(x - s * 0.7, y),
-          ], true);
+          const rot = time * 3;
+          const cos = Math.cos(rot);
+          const sin = Math.sin(rot);
+          const pts = [
+            { dx: 0, dy: -s }, { dx: s * 0.7, dy: 0 },
+            { dx: 0, dy: s }, { dx: -s * 0.7, dy: 0 },
+          ].map(p => new Phaser.Geom.Point(
+            x + p.dx * cos - p.dy * sin,
+            y + p.dx * sin + p.dy * cos,
+          ));
+          g.fillPoints(pts, true);
+          // Core
+          g.fillStyle(0xffffff, 0.5);
+          g.fillCircle(x, y, s * 0.3);
           break;
         }
         case 'bolt': {
           const s = style.size;
-          g.fillPoints([
-            new Phaser.Geom.Point(x - s * 0.3, y - s),
-            new Phaser.Geom.Point(x + s * 0.5, y - s * 0.2),
-            new Phaser.Geom.Point(x, y),
-            new Phaser.Geom.Point(x + s * 0.3, y + s),
-            new Phaser.Geom.Point(x - s * 0.5, y + s * 0.2),
-            new Phaser.Geom.Point(x, y),
-          ], true);
+          // Rotating arrow shape
+          const angle = trail.length >= 2
+            ? Math.atan2(y - trail[trail.length - 2].y, x - trail[trail.length - 2].x)
+            : 0;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const rawPts = [
+            { dx: s * 1.2, dy: 0 },
+            { dx: -s * 0.5, dy: -s * 0.6 },
+            { dx: -s * 0.2, dy: 0 },
+            { dx: -s * 0.5, dy: s * 0.6 },
+          ];
+          const pts = rawPts.map(p => new Phaser.Geom.Point(
+            x + p.dx * cos - p.dy * sin,
+            y + p.dx * sin + p.dy * cos,
+          ));
+          g.fillPoints(pts, true);
+          // Bright tip
+          g.fillStyle(0xffffff, 0.7);
+          g.fillCircle(x + cos * s * 0.6, y + sin * s * 0.6, 2);
           break;
         }
         case 'star': {
           const s = style.size;
+          const rot = time * 4;
           const pts: Phaser.Geom.Point[] = [];
           for (let a = 0; a < 5; a++) {
-            const angle1 = (a * 72 - 90) * Math.PI / 180;
-            const angle2 = ((a * 72 + 36) - 90) * Math.PI / 180;
+            const angle1 = (a * 72 - 90) * Math.PI / 180 + rot;
+            const angle2 = ((a * 72 + 36) - 90) * Math.PI / 180 + rot;
             pts.push(new Phaser.Geom.Point(x + Math.cos(angle1) * s, y + Math.sin(angle1) * s));
-            pts.push(new Phaser.Geom.Point(x + Math.cos(angle2) * s * 0.4, y + Math.sin(angle2) * s * 0.4));
+            pts.push(new Phaser.Geom.Point(x + Math.cos(angle2) * s * 0.35, y + Math.sin(angle2) * s * 0.35));
           }
           g.fillPoints(pts, true);
+          // Magical sparkles around the star
+          for (let sp = 0; sp < 3; sp++) {
+            const sa = time * 6 + sp * 2.1;
+            const sr = s * 1.3;
+            g.fillStyle(0xffffff, 0.4 + Math.sin(sa * 2) * 0.3);
+            g.fillCircle(x + Math.cos(sa) * sr, y + Math.sin(sa) * sr, 1.5);
+          }
           break;
         }
       }
+
+      // Store position for impact detection
+      this.prevProjPositions.set(projKey, { x, y, towerId: proj.towerId });
+    }
+
+    // Detect destroyed projectiles → spawn impact effects
+    for (const [key, pos] of this.prevProjPositions) {
+      if (!activeProjKeys.has(key)) {
+        // Projectile was destroyed → impact!
+        const style = GameScene.PROJ_STYLES[pos.towerId] ?? { color: 0xffffff, trailColor: 0x888888, size: 5, shape: 'circle' as const, trailLen: 4 };
+        this.spawnImpactEffect(pos.x, pos.y, style.color);
+        this.prevProjPositions.delete(key);
+      }
+    }
+
+    // Clean up trails for dead projectiles
+    for (const key of this.projTrails.keys()) {
+      if (!activeProjKeys.has(key)) {
+        this.projTrails.delete(key);
+      }
+    }
+  }
+
+  /** Spawn a ring + particle burst at impact point */
+  private spawnImpactEffect(x: number, y: number, color: number): void {
+    // Expanding ring
+    this.impactRings.push({ x, y, radius: 2, maxRadius: 18, life: 0.3, color });
+
+    // Burst of particles
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+      const speed = 40 + Math.random() * 60;
+      this.vfxParticles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 20,
+        life: 0.25 + Math.random() * 0.2,
+        maxLife: 0.45,
+        color,
+        size: 2 + Math.random() * 2,
+        type: 'impact',
+      });
     }
   }
 
@@ -966,6 +1167,9 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.activeEnemies.length - 1; i >= 0; i--) {
       const enemy = this.activeEnemies[i];
       if (enemy.currentHP <= 0) {
+        // Spawn death VFX
+        this.spawnDeathEffect(enemy.worldX, enemy.worldY, 0xff4444);
+
         const sprite = this.enemySprites.get(enemy.id);
         if (sprite) {
           sprite.destroy();
@@ -1126,54 +1330,116 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.gameOverContainer.add(title);
 
-    // Button: Retry current level
-    const retryBtn = this.add.text(512, 310, '🔄 Reintentar Nivel', {
-      fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
-      backgroundColor: '#884422', padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setInteractive();
-    retryBtn.on('pointerdown', () => {
-      this.playSfx('sfx_click');
-      this.restartAtLevel(this.currentLevelIndex);
-    });
-    this.addHoverEffect(retryBtn, '#ffaa44');
-    this.gameOverContainer.add(retryBtn);
+    // Level theme colors for button text
+    const levelData = levelsData[this.currentLevelIndex] as LevelData;
+    const levelName = levelData?.name ?? `Nivel ${this.currentLevelIndex + 1}`;
+    const themeColor = GameScene.LEVEL_NAME_COLORS[this.currentLevelIndex] ?? '#ffffff';
+
+    // Button: Retry current level — shows level name in themed color
+    const retryContainer = this.add.container(512, 310);
+    const retryBg = this.add.graphics();
+    retryBg.fillStyle(0x442211, 0.95);
+    retryBg.fillRoundedRect(-180, -22, 360, 44, 6);
+    retryContainer.add(retryBg);
+
+    const retryLabel = this.add.text(0, -6, '🔄 Reintentar desde', {
+      fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    retryContainer.add(retryLabel);
+
+    const retryName = this.add.text(0, 12, `"${levelName}"`, {
+      fontSize: '16px', color: themeColor, fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    retryContainer.add(retryName);
+
+    const retryHit = this.add.rectangle(0, 0, 360, 44).setInteractive().setAlpha(0.01);
+    retryHit.on('pointerover', () => { retryBg.clear(); retryBg.fillStyle(0x663322, 1); retryBg.fillRoundedRect(-180, -22, 360, 44, 6); });
+    retryHit.on('pointerout', () => { retryBg.clear(); retryBg.fillStyle(0x442211, 0.95); retryBg.fillRoundedRect(-180, -22, 360, 44, 6); });
+    retryHit.on('pointerdown', () => { this.playSfx('sfx_click'); this.restartAtLevel(this.currentLevelIndex); });
+    retryContainer.add(retryHit);
+    this.gameOverContainer.add(retryContainer);
 
     // Button: Restart from level 1
-    const restartBtn = this.add.text(512, 380, '⏮ Comenzar desde Nivel 1', {
-      fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
-      backgroundColor: '#442288', padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setInteractive();
-    restartBtn.on('pointerdown', () => {
-      this.playSfx('sfx_click');
-      this.restartAtLevel(0);
-    });
-    this.addHoverEffect(restartBtn, '#8844ff');
-    this.gameOverContainer.add(restartBtn);
+    const firstLevelName = (levelsData[0] as LevelData)?.name ?? 'Nivel 1';
+    const firstColor = GameScene.LEVEL_NAME_COLORS[0] ?? '#ffffff';
+
+    const restartContainer = this.add.container(512, 390);
+    const restartBg = this.add.graphics();
+    restartBg.fillStyle(0x221144, 0.95);
+    restartBg.fillRoundedRect(-180, -22, 360, 44, 6);
+    restartContainer.add(restartBg);
+
+    const restartLabel = this.add.text(0, -6, '⏮ Comenzar desde', {
+      fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    restartContainer.add(restartLabel);
+
+    const restartName = this.add.text(0, 12, `"${firstLevelName}"`, {
+      fontSize: '16px', color: firstColor, fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    restartContainer.add(restartName);
+
+    const restartHit = this.add.rectangle(0, 0, 360, 44).setInteractive().setAlpha(0.01);
+    restartHit.on('pointerover', () => { restartBg.clear(); restartBg.fillStyle(0x332266, 1); restartBg.fillRoundedRect(-180, -22, 360, 44, 6); });
+    restartHit.on('pointerout', () => { restartBg.clear(); restartBg.fillStyle(0x221144, 0.95); restartBg.fillRoundedRect(-180, -22, 360, 44, 6); });
+    restartHit.on('pointerdown', () => { this.playSfx('sfx_click'); this.restartAtLevel(0); });
+    restartContainer.add(restartHit);
+    this.gameOverContainer.add(restartContainer);
   }
 
-  private restartAtLevel(levelIndex: number): void {
-    // Stop any playing music (including boss defeat)
-    this.stopMusic();
+  /** Themed colors for each level name in UI */
+  private static readonly LEVEL_NAME_COLORS: string[] = [
+    '#88dd44', // Pradera del Inicio — verde prado
+    '#44cc88', // Bosque Encantado — verde bosque
+    '#aaaacc', // Montaña del Dragón — gris piedra
+    '#aa44ff', // Abismo Oscuro — púrpura oscuro
+    '#ff4444', // Trono del Caos — rojo caos
+    '#ffaa44', // Desierto Abrasador — naranja ámbar
+    '#6688cc', // Caverna Cristalina — azul cristal
+    '#44dd66', // Jungla Venenosa — verde tropical
+  ];
 
-    // Clean game over UI
+  private restartAtLevel(levelIndex: number): void {
+    // Stop ALL sounds (music + SFX like defeat jingle)
+    this.sound.stopAll();
+    this.currentMusic = null;
+    this.currentMusicKey = null;
+
+    // Clean game over / victory UI
     if (this.gameOverContainer) {
       this.gameOverContainer.destroy();
       this.gameOverContainer = null;
     }
+    if (this.victoryContainer) {
+      this.victoryContainer.destroy();
+      this.victoryContainer = null;
+    }
 
     this.currentLevelIndex = levelIndex;
     this.gold = 1000;
+    this.wallHP = this.wallMaxHP;
+    this.gamePaused = false;
+    this.inSubmenu = false;
     this.cleanAllState();
     this.loadLevel(this.currentLevelIndex);
     this.setupInput();
+    this.showScenario();
+    this.showGameUI();
     this.updateResources();
+    eventBus.emit('wall:damaged', this.wallHP, this.wallMaxHP);
     this.enterPreparationPhase(0);
   }
+
+  private victoryContainer: Phaser.GameObjects.Container | null = null;
 
   private showVictory(): void {
     this.stopMusic();
     this.playSfx('sfx_victory', 0.7);
-    if (this.currentLevelIndex < levelsData.length - 1) {
+    SoundFX.waveComplete();
+
+    // Advance level index
+    const hasNextLevel = this.currentLevelIndex < levelsData.length - 1;
+    if (hasNextLevel) {
       this.currentLevelIndex++;
       this.gold = 1000;
       this.saveSystem.updateData({
@@ -1184,28 +1450,73 @@ export class GameScene extends Phaser.Scene {
       this.updateResources();
     }
 
-    SoundFX.waveComplete();
+    // Clean old victory UI
+    if (this.victoryContainer) {
+      this.victoryContainer.destroy();
+      this.victoryContainer = null;
+    }
 
-    const victoryText = this.add.text(512, 240, '¡VICTORIA!\nNivel completado', {
+    this.victoryContainer = this.add.container(0, 0).setDepth(300);
+
+    // Full overlay to block clicks below
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.75);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    overlay.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    this.victoryContainer.add(overlay);
+
+    const victoryText = this.add.text(GAME_WIDTH / 2, 240, '¡VICTORIA!\nNivel completado', {
       fontSize: '32px', color: '#44ff44', fontFamily: 'monospace',
       align: 'center',
-    }).setOrigin(0.5).setDepth(300);
+    }).setOrigin(0.5);
+    this.victoryContainer.add(victoryText);
 
-    if (this.currentLevelIndex < levelsData.length) {
-      const nextBtn = this.add.text(512, 340, '▶ Siguiente Nivel', {
-        fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
+    if (hasNextLevel) {
+      const nextLevelData = levelsData[this.currentLevelIndex] as LevelData;
+      const nextLevelName = nextLevelData?.name ?? `Nivel ${this.currentLevelIndex + 1}`;
+
+      const nextBtn = this.add.text(GAME_WIDTH / 2, 340, `▶ Siguiente: "${nextLevelName}"`, {
+        fontSize: '18px', color: '#ffffff', fontFamily: 'monospace',
         backgroundColor: '#225522', padding: { x: 20, y: 10 },
-      }).setOrigin(0.5).setDepth(300).setInteractive();
+      }).setOrigin(0.5).setInteractive();
+      this.victoryContainer.add(nextBtn);
 
       this.addHoverEffect(nextBtn, '#44ff44');
       nextBtn.on('pointerdown', () => {
         this.playSfx('sfx_click');
-        victoryText.destroy();
-        nextBtn.destroy();
+        if (this.victoryContainer) {
+          this.victoryContainer.destroy();
+          this.victoryContainer = null;
+        }
         this.cleanAllState();
         this.loadLevel(this.currentLevelIndex);
         this.setupInput();
-        this.startWave(0);
+        this.enterPreparationPhase(0);
+      });
+    } else {
+      // All levels completed
+      const endText = this.add.text(GAME_WIDTH / 2, 340, '¡Has completado todos los niveles!', {
+        fontSize: '18px', color: '#ffcc00', fontFamily: 'monospace',
+      }).setOrigin(0.5);
+      this.victoryContainer.add(endText);
+
+      const restartBtn = this.add.text(GAME_WIDTH / 2, 400, '⏮ Reiniciar desde el inicio', {
+        fontSize: '16px', color: '#ffffff', fontFamily: 'monospace',
+        backgroundColor: '#442222', padding: { x: 15, y: 8 },
+      }).setOrigin(0.5).setInteractive();
+      this.victoryContainer.add(restartBtn);
+
+      this.addHoverEffect(restartBtn, '#ff8844');
+      restartBtn.on('pointerdown', () => {
+        this.playSfx('sfx_click');
+        if (this.victoryContainer) {
+          this.victoryContainer.destroy();
+          this.victoryContainer = null;
+        }
+        this.restartAtLevel(0);
       });
     }
   }
@@ -1241,6 +1552,21 @@ export class GameScene extends Phaser.Scene {
     // Destroy hit particles
     for (const p of this.hitParticles) p.sprite.destroy();
     this.hitParticles = [];
+    // Destroy VFX systems
+    this.vfxParticles = [];
+    this.impactRings = [];
+    this.projTrails.clear();
+    this.prevProjPositions.clear();
+    if (this.vfxGraphics) {
+      this.vfxGraphics.destroy();
+      this.vfxGraphics = null;
+    }
+    this.ultimateEffects = [];
+    this.ultimateGlows.clear();
+    if (this.ultChargeGraphics) {
+      this.ultChargeGraphics.destroy();
+      this.ultChargeGraphics = null;
+    }
     if (this.troopSystem) this.troopSystem.clearAll();
     this.selectedCharacterId = null;
     this.hideTroopTooltip();
@@ -1416,10 +1742,17 @@ export class GameScene extends Phaser.Scene {
     });
     this.addHoverEffect(this.startWaveBtn, '#44ff44');
 
-    // Menu panel can be opened with ESC during preparation
-
     this.updateResources();
     console.log('[TD] Preparation phase for wave', waveIndex + 1);
+
+    // If autoplay is on and this is NOT the first wave of a new level, auto-start
+    if (this.autoplay && waveIndex > 0) {
+      this.time.delayedCall(600, () => {
+        if (this.gameState === 'preparing' && this.autoplay) {
+          this.startWave(this.currentWaveIndex);
+        }
+      });
+    }
   }
 
   private clearPreparationUI(): void {
@@ -1428,6 +1761,34 @@ export class GameScene extends Phaser.Scene {
       this.startWaveBtn = null;
     }
     this.menuPanel.hide();
+  }
+
+  private updateAutoplayBtn(): void {
+    if (this.autoplayBtn) {
+      this.autoplayBtn.destroy();
+      this.autoplayBtn = null;
+    }
+    const label = this.autoplay ? '▶▶ AUTO: ON' : '▶▶ AUTO: OFF';
+    const bgColor = this.autoplay ? '#225522' : '#333333';
+    const textColor = this.autoplay ? '#44ff44' : '#888888';
+
+    this.autoplayBtn = this.add.text(512, 32, label, {
+      fontSize: '11px', color: textColor, fontFamily: 'monospace',
+      backgroundColor: bgColor, padding: { x: 8, y: 3 },
+    }).setOrigin(0.5, 0).setDepth(250).setInteractive();
+
+    this.autoplayBtn.on('pointerdown', () => {
+      this.autoplay = !this.autoplay;
+      this.playSfx('sfx_click');
+      this.updateAutoplayBtn();
+    });
+
+    this.autoplayBtn.on('pointerover', () => {
+      this.autoplayBtn?.setStroke('#ffffff', 2);
+    });
+    this.autoplayBtn.on('pointerout', () => {
+      this.autoplayBtn?.setStroke('', 0);
+    });
   }
 
   // ---- Range Toggle ----
@@ -2205,16 +2566,592 @@ export class GameScene extends Phaser.Scene {
 
   private spawnMeleeHitParticle(x: number, y: number, troopType: string): void {
     const texKey = GameScene.TYPE_HIT_MAP[troopType] ?? 'hit_sparkle';
-    if (!this.textures.exists(texKey)) return;
+    if (this.textures.exists(texKey)) {
+      const sprite = this.add.sprite(x, y, texKey)
+        .setDepth(20)
+        .setScale(0.5)
+        .setAlpha(0.9);
+      this.hitParticles.push({ sprite, life: 0.4 });
+    }
 
-    const sprite = this.add.sprite(x, y, texKey)
-      .setDepth(20)
-      .setScale(0.5)
-      .setAlpha(0.9);
-    this.hitParticles.push({ sprite, life: 0.4 });
+    // Slash arc (graphics-based)
+    const slashColor = troopType === 'commander' ? 0xff4444 :
+                       troopType === 'aerial' ? 0x44ccff :
+                       troopType === 'support' ? 0x44ff88 : 0xffdd44;
+    for (let i = 0; i < 4; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 30 + Math.random() * 40;
+      this.vfxParticles.push({
+        x: x + (Math.random() - 0.5) * 8,
+        y: y + (Math.random() - 0.5) * 8,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 30,
+        life: 0.2 + Math.random() * 0.15,
+        maxLife: 0.35,
+        color: slashColor,
+        size: 2 + Math.random() * 2,
+        type: 'slash',
+      });
+    }
+
+    // Small impact ring for melee
+    this.impactRings.push({ x, y, radius: 1, maxRadius: 12, life: 0.2, color: slashColor });
+  }
+
+  /** Spawn death particles when an enemy dies */
+  spawnDeathEffect(x: number, y: number, color = 0xff4444): void {
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
+      const speed = 20 + Math.random() * 50;
+      this.vfxParticles.push({
+        x: x + (Math.random() - 0.5) * 6,
+        y: y + (Math.random() - 0.5) * 6,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 40,
+        life: 0.4 + Math.random() * 0.3,
+        maxLife: 0.7,
+        color,
+        size: 1.5 + Math.random() * 2.5,
+        type: 'death',
+      });
+    }
+    // Death ring
+    this.impactRings.push({ x, y, radius: 3, maxRadius: 22, life: 0.35, color });
+  }
+
+  private spawnUltimateVFX(data: {
+    troopId: string; charId: string; type: string;
+    x: number; y: number; radius: number;
+    targetX?: number; targetY?: number; duration?: number;
+  }): void {
+    const { type, x, y, radius } = data;
+
+    // Color schemes per ultimate type
+    const ULT_COLORS: Record<string, number> = {
+      soldier_fury: 0xff8844,   archer_rain: 0xaacc44,   guard_wall: 0x8888cc,
+      scout_ambush: 0x44ff88,   militia_frenzy: 0xff6644, healer_bless: 0x88ffaa,
+      spearman_charge: 0xddaa44, lookout_flare: 0xffff66, knight_charge: 0xccccff,
+      mage_storm: 0x8844ff,     ranger_pierce: 0x44cc44, priest_sanctuary: 0xffddaa,
+      hawk_dive: 0x44aaff,      paladin_judgment: 0xffdd44, assassin_blades: 0xaa22cc,
+      archmage_meteor: 0xff4400, dragon_fury: 0xff6600,   seraph_ray: 0xffff88,
+      overlord_warcry: 0xff2222, phoenix_supernova: 0xff8800, generic_aoe: 0xffffff,
+    };
+    const color = ULT_COLORS[type] ?? 0xffffff;
+
+    switch (type) {
+      case 'paladin_judgment': {
+        // Golden shockwave + rising light pillars
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.8, maxLife: 0.8, radius, color: 0xffdd44 });
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * Math.PI * 2;
+          const r = radius * 0.6;
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * r * 0.3, y: y + Math.sin(a) * r * 0.3,
+            vx: Math.cos(a) * 30, vy: -80 - Math.random() * 40,
+            life: 0.6 + Math.random() * 0.3, maxLife: 0.9,
+            color: 0xffdd44, size: 3 + Math.random() * 3, type: 'impact',
+          });
+        }
+        // Cross pattern particles
+        for (let i = 0; i < 20; i++) {
+          const a = (Math.floor(i / 5) * 90) * Math.PI / 180;
+          const dist = (i % 5) * radius / 5;
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * dist, y: y + Math.sin(a) * dist,
+            vx: 0, vy: -60 - Math.random() * 30,
+            life: 0.4 + Math.random() * 0.4, maxLife: 0.8,
+            color: 0xffffff, size: 2 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'assassin_blades': {
+        // Circular blade slash patterns
+        this.ultimateEffects.push({ type: 'blades_spin', x, y, life: 1.2, maxLife: 1.2, radius, color: 0xaa22cc });
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          this.vfxParticles.push({
+            x, y,
+            vx: Math.cos(a) * 80, vy: Math.sin(a) * 80,
+            life: 0.3 + Math.random() * 0.2, maxLife: 0.5,
+            color: i % 2 === 0 ? 0xcc44ff : 0x8800aa, size: 2 + Math.random() * 2, type: 'slash',
+          });
+        }
+        break;
+      }
+
+      case 'archmage_meteor': {
+        // Meteor falling + explosion
+        const tx = data.targetX ?? x;
+        const ty = data.targetY ?? y;
+        this.ultimateEffects.push({ type: 'meteor', x: tx, y: ty - 200, life: 1.0, maxLife: 1.0, radius, color: 0xff4400, targetX: tx, targetY: ty });
+        break;
+      }
+
+      case 'dragon_fury': {
+        // Fiery aura + transformation flash
+        this.ultimateGlows.set(data.troopId, { color: 0xff6600 });
+        this.ultimateEffects.push({ type: 'transform_flash', x, y, life: 0.6, maxLife: 0.6, radius: TILE_SIZE * 2, color: 0xff6600 });
+        for (let i = 0; i < 15; i++) {
+          const a = Math.random() * Math.PI * 2;
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * 10, y: y + Math.sin(a) * 10,
+            vx: Math.cos(a) * 40, vy: -50 - Math.random() * 40,
+            life: 0.5 + Math.random() * 0.4, maxLife: 0.9,
+            color: Math.random() > 0.5 ? 0xff6600 : 0xffaa00, size: 3 + Math.random() * 3, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'seraph_ray': {
+        // Light beam from troop to target
+        const tx = data.targetX ?? x + 100;
+        const ty = data.targetY ?? y;
+        this.ultimateEffects.push({ type: 'light_beam', x, y, life: 0.8, maxLife: 0.8, radius, color: 0xffff88, targetX: tx, targetY: ty });
+        // Sparkles along the beam
+        const dx = tx - x; const dy = ty - y;
+        for (let i = 0; i < 10; i++) {
+          const t = i / 10;
+          this.vfxParticles.push({
+            x: x + dx * t, y: y + dy * t,
+            vx: (Math.random() - 0.5) * 30, vy: -30 - Math.random() * 20,
+            life: 0.3 + Math.random() * 0.3, maxLife: 0.6,
+            color: 0xffffcc, size: 2 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'overlord_warcry': {
+        // Red shockwave emanating from overlord
+        this.ultimateGlows.set(data.troopId, { color: 0xff2222 });
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 1.0, maxLife: 1.0, radius: TILE_SIZE * 8, color: 0xff2222 });
+        // Red particles upward
+        for (let i = 0; i < 20; i++) {
+          const a = Math.random() * Math.PI * 2;
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * 15, y: y + Math.sin(a) * 15,
+            vx: Math.cos(a) * 20, vy: -70 - Math.random() * 50,
+            life: 0.5 + Math.random() * 0.5, maxLife: 1.0,
+            color: 0xff4444, size: 2.5 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'phoenix_supernova': {
+        // Massive expanding sun explosion
+        this.ultimateEffects.push({ type: 'supernova', x, y, life: 1.5, maxLife: 1.5, radius, color: 0xff8800 });
+        // Enormous particle burst
+        for (let i = 0; i < 30; i++) {
+          const a = (i / 30) * Math.PI * 2;
+          const speed = 60 + Math.random() * 80;
+          this.vfxParticles.push({
+            x, y,
+            vx: Math.cos(a) * speed, vy: Math.sin(a) * speed - 20,
+            life: 0.6 + Math.random() * 0.6, maxLife: 1.2,
+            color: Math.random() > 0.3 ? 0xff8800 : 0xffdd00, size: 3 + Math.random() * 4, type: 'impact',
+          });
+        }
+        // Inner white burst
+        for (let i = 0; i < 15; i++) {
+          const a = Math.random() * Math.PI * 2;
+          this.vfxParticles.push({
+            x, y,
+            vx: Math.cos(a) * 30, vy: Math.sin(a) * 30 - 40,
+            life: 0.4 + Math.random() * 0.3, maxLife: 0.7,
+            color: 0xffffff, size: 2 + Math.random() * 3, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      // ─── COMMON ABILITIES ───
+
+      case 'soldier_fury': {
+        // Orange slash + impact
+        this.ultimateEffects.push({ type: 'transform_flash', x, y, life: 0.4, maxLife: 0.4, radius: TILE_SIZE * 1.5, color: 0xff8844 });
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          this.vfxParticles.push({
+            x, y, vx: Math.cos(a) * 60, vy: Math.sin(a) * 60 - 20,
+            life: 0.3, maxLife: 0.3, color: 0xff8844, size: 3, type: 'slash',
+          });
+        }
+        this.impactRings.push({ x, y, radius: 2, maxRadius: radius * 0.6, life: 0.3, color: 0xff8844 });
+        break;
+      }
+
+      case 'archer_rain': {
+        // Rain of arrows: particles falling from above
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.7, maxLife: 0.7, radius, color: 0xaacc44 });
+        for (let i = 0; i < 15; i++) {
+          const ox = (Math.random() - 0.5) * radius * 2;
+          this.vfxParticles.push({
+            x: x + ox, y: y - 80 - Math.random() * 40,
+            vx: (Math.random() - 0.5) * 10, vy: 120 + Math.random() * 60,
+            life: 0.4 + Math.random() * 0.2, maxLife: 0.6,
+            color: 0xaacc44, size: 2 + Math.random() * 2, type: 'trail',
+          });
+        }
+        break;
+      }
+
+      case 'guard_wall': {
+        // Blue shield bubble
+        this.ultimateGlows.set(data.troopId, { color: 0x8888cc });
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.6, maxLife: 0.6, radius, color: 0x8888cc });
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * radius * 0.5, y: y + Math.sin(a) * radius * 0.5,
+            vx: 0, vy: -40 - Math.random() * 20,
+            life: 0.5, maxLife: 0.5, color: 0xaaaaee, size: 2.5, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'scout_ambush': {
+        // Green dash line to target
+        const tx = data.targetX ?? x; const ty = data.targetY ?? y;
+        this.ultimateEffects.push({ type: 'light_beam', x, y, life: 0.5, maxLife: 0.5, radius, color: 0x44ff88, targetX: tx, targetY: ty });
+        this.impactRings.push({ x: tx, y: ty, radius: 2, maxRadius: TILE_SIZE * 1.5, life: 0.3, color: 0x44ff88 });
+        for (let i = 0; i < 6; i++) {
+          this.vfxParticles.push({
+            x: tx, y: ty, vx: (Math.random() - 0.5) * 50, vy: -50 - Math.random() * 30,
+            life: 0.3, maxLife: 0.3, color: 0x44ff88, size: 2.5, type: 'slash',
+          });
+        }
+        break;
+      }
+
+      case 'militia_frenzy': {
+        // Orange rage burst + glow
+        this.ultimateGlows.set(data.troopId, { color: 0xff6644 });
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.5, maxLife: 0.5, radius, color: 0xff6644 });
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2;
+          this.vfxParticles.push({
+            x, y, vx: Math.cos(a) * 50, vy: Math.sin(a) * 50 - 30,
+            life: 0.3 + Math.random() * 0.2, maxLife: 0.5,
+            color: Math.random() > 0.5 ? 0xff6644 : 0xff9944, size: 2.5, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'healer_bless': {
+        // Green healing aura + rising particles
+        this.ultimateGlows.set(data.troopId, { color: 0x88ffaa });
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.8, maxLife: 0.8, radius, color: 0x88ffaa });
+        for (let i = 0; i < 12; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.random() * radius * 0.8;
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * r, y: y + Math.sin(a) * r,
+            vx: 0, vy: -40 - Math.random() * 30,
+            life: 0.5 + Math.random() * 0.3, maxLife: 0.8,
+            color: 0x88ffaa, size: 2 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'spearman_charge':
+      case 'ranger_pierce': {
+        // Piercing line beam
+        const tx2 = data.targetX ?? x + 100; const ty2 = data.targetY ?? y;
+        this.ultimateEffects.push({ type: 'light_beam', x, y, life: 0.6, maxLife: 0.6, radius, color, targetX: tx2, targetY: ty2 });
+        const ddx = tx2 - x; const ddy = ty2 - y;
+        for (let i = 0; i < 8; i++) {
+          const t = i / 8;
+          this.vfxParticles.push({
+            x: x + ddx * t, y: y + ddy * t,
+            vx: (Math.random() - 0.5) * 30, vy: -30 - Math.random() * 20,
+            life: 0.3, maxLife: 0.3, color, size: 2.5, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'lookout_flare': {
+        // Yellow flare burst upward
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.6, maxLife: 0.6, radius, color: 0xffff66 });
+        for (let i = 0; i < 10; i++) {
+          this.vfxParticles.push({
+            x: x + (Math.random() - 0.5) * 20, y,
+            vx: (Math.random() - 0.5) * 20, vy: -80 - Math.random() * 60,
+            life: 0.5 + Math.random() * 0.3, maxLife: 0.8,
+            color: Math.random() > 0.5 ? 0xffff66 : 0xffcc00, size: 2.5 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'knight_charge': {
+        // Silver/white heavy impact
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.7, maxLife: 0.7, radius, color: 0xccccff });
+        this.impactRings.push({ x, y, radius: 3, maxRadius: radius, life: 0.4, color: 0xccccff });
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2;
+          this.vfxParticles.push({
+            x, y, vx: Math.cos(a) * 60, vy: Math.sin(a) * 60 - 20,
+            life: 0.35, maxLife: 0.35, color: 0xccccff, size: 3, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'mage_storm': {
+        // Purple arcane storm
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.8, maxLife: 0.8, radius, color: 0x8844ff });
+        for (let i = 0; i < 14; i++) {
+          const a = (i / 14) * Math.PI * 2;
+          const r = radius * (0.3 + Math.random() * 0.7);
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * r, y: y + Math.sin(a) * r,
+            vx: Math.cos(a + 1.5) * 40, vy: -40 - Math.random() * 40,
+            life: 0.4 + Math.random() * 0.3, maxLife: 0.7,
+            color: Math.random() > 0.5 ? 0x8844ff : 0xaa66ff, size: 2.5 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'priest_sanctuary': {
+        // Warm golden healing circle + glow
+        this.ultimateGlows.set(data.troopId, { color: 0xffddaa });
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.7, maxLife: 0.7, radius, color: 0xffddaa });
+        for (let i = 0; i < 10; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.random() * radius * 0.6;
+          this.vfxParticles.push({
+            x: x + Math.cos(a) * r, y: y + Math.sin(a) * r,
+            vx: 0, vy: -50 - Math.random() * 30,
+            life: 0.5, maxLife: 0.5, color: 0xffddaa, size: 2 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+
+      case 'hawk_dive': {
+        // Cyan dive bomb from above to target
+        const htx = data.targetX ?? x; const hty = data.targetY ?? y;
+        this.ultimateEffects.push({ type: 'meteor', x: htx, y: hty - 150, life: 0.7, maxLife: 0.7, radius, color: 0x44aaff, targetX: htx, targetY: hty });
+        break;
+      }
+
+      default: {
+        // Generic flash + ring
+        this.ultimateEffects.push({ type: 'shockwave', x, y, life: 0.6, maxLife: 0.6, radius, color });
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          this.vfxParticles.push({
+            x, y, vx: Math.cos(a) * 50, vy: Math.sin(a) * 50 - 20,
+            life: 0.3 + Math.random() * 0.2, maxLife: 0.5,
+            color, size: 2 + Math.random() * 2, type: 'impact',
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  private updateUltimateVFX(deltaSec: number): void {
+    if (!this.vfxGraphics) return;
+    const g = this.vfxGraphics;
+    const time = this.time.now * 0.001;
+
+    // Draw ultimate effects
+    for (let i = this.ultimateEffects.length - 1; i >= 0; i--) {
+      const eff = this.ultimateEffects[i];
+      eff.life -= deltaSec;
+      if (eff.life <= 0) {
+        // On meteor end, spawn explosion
+        if (eff.type === 'meteor') {
+          const tx = eff.targetX ?? eff.x;
+          const ty = eff.targetY ?? eff.y;
+          this.ultimateEffects.push({ type: 'shockwave', x: tx, y: ty, life: 0.6, maxLife: 0.6, radius: eff.radius, color: 0xff4400 });
+          // Explosion particles
+          for (let j = 0; j < 20; j++) {
+            const a = (j / 20) * Math.PI * 2;
+            this.vfxParticles.push({
+              x: tx, y: ty,
+              vx: Math.cos(a) * (50 + Math.random() * 50), vy: Math.sin(a) * (50 + Math.random() * 50) - 30,
+              life: 0.4 + Math.random() * 0.3, maxLife: 0.7,
+              color: Math.random() > 0.5 ? 0xff4400 : 0xffaa00, size: 3 + Math.random() * 3, type: 'impact',
+            });
+          }
+        }
+        this.ultimateEffects.splice(i, 1);
+        continue;
+      }
+
+      const progress = 1 - eff.life / eff.maxLife;
+
+      switch (eff.type) {
+        case 'shockwave': {
+          // Expanding ring that fades out
+          const r = eff.radius * progress;
+          const alpha = (1 - progress) * 0.7;
+          g.lineStyle(3 * (1 - progress) + 1, eff.color, alpha);
+          g.strokeCircle(eff.x, eff.y, r);
+          // Inner fill
+          g.fillStyle(eff.color, alpha * 0.15);
+          g.fillCircle(eff.x, eff.y, r);
+          break;
+        }
+
+        case 'blades_spin': {
+          // Spinning blade arcs
+          const numBlades = 8;
+          const spinSpeed = progress * Math.PI * 6;
+          const alpha = (1 - progress) * 0.8;
+          for (let b = 0; b < numBlades; b++) {
+            const a = (b / numBlades) * Math.PI * 2 + spinSpeed;
+            const r1 = eff.radius * 0.3;
+            const r2 = eff.radius * (0.5 + progress * 0.5);
+            g.lineStyle(2, eff.color, alpha);
+            g.beginPath();
+            g.moveTo(eff.x + Math.cos(a) * r1, eff.y + Math.sin(a) * r1);
+            g.lineTo(eff.x + Math.cos(a) * r2, eff.y + Math.sin(a) * r2);
+            g.strokePath();
+          }
+          break;
+        }
+
+        case 'meteor': {
+          // Falling fireball
+          const tx = eff.targetX ?? eff.x;
+          const ty = eff.targetY ?? eff.y;
+          const mx = eff.x + (tx - eff.x) * progress;
+          const my = (eff.y) + (ty - eff.y) * progress;
+          // Fire trail
+          const meteorSize = 8 + progress * 6;
+          g.fillStyle(0xff4400, 0.8);
+          g.fillCircle(mx, my, meteorSize);
+          g.fillStyle(0xffaa00, 0.6);
+          g.fillCircle(mx, my, meteorSize * 0.6);
+          g.fillStyle(0xffffff, 0.4);
+          g.fillCircle(mx, my, meteorSize * 0.3);
+          // Trail particles
+          for (let t = 0; t < 3; t++) {
+            this.vfxParticles.push({
+              x: mx + (Math.random() - 0.5) * 6, y: my + (Math.random() - 0.5) * 6,
+              vx: (Math.random() - 0.5) * 20, vy: -20 + Math.random() * 10,
+              life: 0.15 + Math.random() * 0.1, maxLife: 0.25,
+              color: 0xff6600, size: 2 + Math.random() * 2, type: 'trail',
+            });
+          }
+          // Shadow on ground
+          g.fillStyle(0x000000, 0.3 * progress);
+          g.fillEllipse(tx, ty, 20 * progress, 8 * progress);
+          break;
+        }
+
+        case 'transform_flash': {
+          // Bright expanding flash
+          const flashAlpha = (1 - progress) * 0.6;
+          const r = eff.radius * (0.5 + progress * 0.5);
+          g.fillStyle(eff.color, flashAlpha * 0.3);
+          g.fillCircle(eff.x, eff.y, r);
+          g.fillStyle(0xffffff, flashAlpha * 0.5);
+          g.fillCircle(eff.x, eff.y, r * 0.4);
+          break;
+        }
+
+        case 'light_beam': {
+          // Light beam line
+          const tx = eff.targetX ?? eff.x + 100;
+          const ty = eff.targetY ?? eff.y;
+          const alpha = (1 - progress * 0.7) * 0.7;
+          const width = 6 * (1 - progress * 0.5);
+          // Outer glow
+          g.lineStyle(width + 4, eff.color, alpha * 0.3);
+          g.beginPath(); g.moveTo(eff.x, eff.y); g.lineTo(tx, ty); g.strokePath();
+          // Core beam
+          g.lineStyle(width, 0xffffff, alpha * 0.7);
+          g.beginPath(); g.moveTo(eff.x, eff.y); g.lineTo(tx, ty); g.strokePath();
+          break;
+        }
+
+        case 'supernova': {
+          // Multi-layered expanding sun
+          const r1 = eff.radius * progress;
+          const r2 = eff.radius * progress * 0.7;
+          const alpha = (1 - progress) * 0.6;
+          g.fillStyle(0xff8800, alpha * 0.2);
+          g.fillCircle(eff.x, eff.y, r1);
+          g.fillStyle(0xffcc00, alpha * 0.3);
+          g.fillCircle(eff.x, eff.y, r2);
+          g.fillStyle(0xffffff, alpha * 0.4);
+          g.fillCircle(eff.x, eff.y, r2 * 0.3);
+          // Rays
+          for (let r = 0; r < 8; r++) {
+            const a = (r / 8) * Math.PI * 2 + time * 2;
+            g.lineStyle(2, 0xffdd00, alpha * 0.5);
+            g.beginPath();
+            g.moveTo(eff.x + Math.cos(a) * r2 * 0.3, eff.y + Math.sin(a) * r2 * 0.3);
+            g.lineTo(eff.x + Math.cos(a) * r1, eff.y + Math.sin(a) * r1);
+            g.strokePath();
+          }
+          break;
+        }
+      }
+    }
+
+    // Draw persistent glow on troops with active buffs
+    for (const [troopId, glow] of this.ultimateGlows) {
+      const troop = this.troopSystem?.getTroops().find(t => t.id === troopId);
+      if (!troop) { this.ultimateGlows.delete(troopId); continue; }
+      const pulse = 1 + Math.sin(time * 4) * 0.2;
+      g.fillStyle(glow.color, 0.15 * pulse);
+      g.fillCircle(troop.worldX, troop.worldY, 18 * pulse);
+      g.lineStyle(1.5, glow.color, 0.4 * pulse);
+      g.strokeCircle(troop.worldX, troop.worldY, 16 * pulse);
+    }
+
+    // Draw ultimate charge bars above troops
+    this.drawUltimateChargeBars();
+  }
+
+  private drawUltimateChargeBars(): void {
+    if (!this.ultChargeGraphics) {
+      this.ultChargeGraphics = this.add.graphics().setDepth(23);
+    }
+    this.ultChargeGraphics.clear();
+
+    if (!this.troopSystem) return;
+    const charges = this.troopSystem.getUltimateCharges();
+
+    for (const [troopId, info] of charges) {
+      const troop = this.troopSystem.getTroops().find(t => t.id === troopId);
+      if (!troop) continue;
+
+      const barW = 26;
+      const barH = 4;
+      const bx = troop.worldX - barW / 2;
+      const by = troop.worldY - 24;
+      const pct = Math.min(1, info.charge / info.cooldown);
+
+      // Background
+      this.ultChargeGraphics.fillStyle(0x220000, 0.85);
+      this.ultChargeGraphics.fillRect(bx, by, barW, barH);
+      // Fill — red bar
+      const barColor = info.active ? 0xffdd00 : 0xcc2222;
+      this.ultChargeGraphics.fillStyle(barColor, 0.95);
+      this.ultChargeGraphics.fillRect(bx, by, barW * pct, barH);
+      // Border
+      this.ultChargeGraphics.lineStyle(1, info.active ? 0xffff44 : 0x882222, 0.8);
+      this.ultChargeGraphics.strokeRect(bx, by, barW, barH);
+    }
   }
 
   private updateHitParticles(deltaSec: number): void {
+    // Sprite-based hit particles
     for (let i = this.hitParticles.length - 1; i >= 0; i--) {
       const p = this.hitParticles[i];
       p.life -= deltaSec;
@@ -2225,6 +3162,49 @@ export class GameScene extends Phaser.Scene {
         p.sprite.destroy();
         this.hitParticles.splice(i, 1);
       }
+    }
+
+    // VFX Graphics particles
+    if (!this.vfxGraphics) {
+      this.vfxGraphics = this.add.graphics().setDepth(22);
+    }
+    this.vfxGraphics.clear();
+
+    // Update and draw vfxParticles
+    for (let i = this.vfxParticles.length - 1; i >= 0; i--) {
+      const p = this.vfxParticles[i];
+      p.life -= deltaSec;
+      if (p.life <= 0) {
+        this.vfxParticles.splice(i, 1);
+        continue;
+      }
+      p.x += p.vx * deltaSec;
+      p.y += p.vy * deltaSec;
+      p.vy += 60 * deltaSec; // gravity
+
+      const alpha = Math.max(0, p.life / p.maxLife);
+      const size = p.size * (0.5 + alpha * 0.5);
+
+      this.vfxGraphics.fillStyle(p.color, alpha * 0.9);
+      this.vfxGraphics.fillCircle(p.x, p.y, size);
+      // Bright core
+      this.vfxGraphics.fillStyle(0xffffff, alpha * 0.4);
+      this.vfxGraphics.fillCircle(p.x, p.y, size * 0.4);
+    }
+
+    // Update and draw impact rings
+    for (let i = this.impactRings.length - 1; i >= 0; i--) {
+      const r = this.impactRings[i];
+      r.life -= deltaSec;
+      if (r.life <= 0) {
+        this.impactRings.splice(i, 1);
+        continue;
+      }
+      const progress = 1 - (r.life / 0.35);
+      r.radius = r.maxRadius * progress;
+      const alpha = (1 - progress) * 0.6;
+      this.vfxGraphics.lineStyle(2 * (1 - progress) + 0.5, r.color, alpha);
+      this.vfxGraphics.strokeCircle(r.x, r.y, r.radius);
     }
   }
 }

@@ -32,13 +32,20 @@ function playTone(
   }
 }
 
+// Throttle to prevent sound distortion when many hits happen at once
+let lastEnemyHitTime = 0;
+const ENEMY_HIT_COOLDOWN = 80; // ms between enemy hit sounds
+
 export const SoundFX = {
   wallHit(): void {
     playTone(80, 40, 0.3, 0.4);
   },
 
   enemyHit(): void {
-    playTone(400, 200, 0.1, 0.2, 'square');
+    const now = performance.now();
+    if (now - lastEnemyHitTime < ENEMY_HIT_COOLDOWN) return;
+    lastEnemyHitTime = now;
+    playTone(400, 200, 0.08, 0.12, 'square');
   },
 
   waveComplete(): void {

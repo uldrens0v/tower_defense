@@ -605,3 +605,309 @@ export class TypingChallenge {
     this.container.destroy();
   }
 }
+
+// ══════════════════════════════════════════
+// MEMORY CHALLENGE (Combat / Elite rooms)
+// ══════════════════════════════════════════
+
+/** Sprite IDs used as card faces in the memory game */
+const MEMORY_SPRITES = [
+  'enemy_runner', 'enemy_tank', 'enemy_berserker', 'enemy_dark_mage',
+  'enemy_healer', 'enemy_shield', 'enemy_golem', 'enemy_harpy',
+  'enemy_wyvern', 'enemy_exploder', 'enemy_specter',
+  'char_soldier', 'char_archer', 'char_knight', 'char_mage',
+  'char_ranger', 'char_paladin', 'char_assassin', 'char_archmage',
+];
+
+interface MemoryCard {
+  spriteId: string;
+  index: number;
+  flipped: boolean;
+  matched: boolean;
+  bg: Phaser.GameObjects.Graphics;
+  sprite: Phaser.GameObjects.Sprite | null;
+  hit: Phaser.GameObjects.Rectangle;
+}
+
+export class MemoryChallenge {
+  private scene: Phaser.Scene;
+  private container: Phaser.GameObjects.Container;
+  private cards: MemoryCard[] = [];
+  private flippedCards: MemoryCard[] = [];
+  private matchedPairs = 0;
+  private totalPairs: number;
+  private maxErrors: number;
+  private errors = 0;
+  private locked = false;
+  private onComplete: (success: boolean, challenge: MemoryChallenge) => void;
+  private errorsText!: Phaser.GameObjects.Text;
+  private finished = false;
+
+  constructor(
+    scene: Phaser.Scene,
+    difficulty: number,
+    onComplete: (success: boolean, challenge: MemoryChallenge) => void,
+  ) {
+    this.scene = scene;
+    this.onComplete = onComplete;
+    this.container = scene.add.container(0, 0).setDepth(400);
+
+    // Difficulty determines grid size
+    // combat (diff 1-2): 3x4=6 pairs, elite (diff 3+): 4x4=8 pairs
+    const isElite = difficulty >= 3;
+    const cols = isElite ? 4 : 4;
+    const rows = isElite ? 4 : 3;
+    this.totalPairs = (cols * rows) / 2;
+    this.maxErrors = this.totalPairs + 1;
+
+    // Pick random sprite IDs for pairs
+    const shuffled = [...MEMORY_SPRITES].sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, this.totalPairs);
+
+    // Create pairs and shuffle
+    const cardData = [...selected, ...selected].sort(() => Math.random() - 0.5);
+
+    // UI
+    const panelW = Math.min(560, GAME_WIDTH - 40);
+    const panelH = isElite ? 480 : 420;
+    const px = (GAME_WIDTH - panelW) / 2;
+    const py = (GAME_HEIGHT - panelH) / 2;
+
+    // Overlay
+    const overlay = scene.add.graphics();
+    overlay.fillStyle(0x000000, 0.85);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    overlay.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    this.container.add(overlay);
+
+    // Panel
+    const panel = scene.add.graphics();
+    panel.fillStyle(0x1a1a3a, 0.98);
+    panel.fillRect(px, py, panelW, panelH);
+    panel.lineStyle(2, isElite ? 0xaa44ff : 0xff8844);
+    panel.strokeRect(px, py, panelW, panelH);
+    this.container.add(panel);
+
+    // Title
+    const titleIcon = isElite ? '💀' : '⚔';
+    const titleText = isElite ? 'Combate Élite — Memorión' : 'Combate — Memorión';
+    const titleColor = isElite ? '#aa44ff' : '#ff8844';
+    const title = scene.add.text(GAME_WIDTH / 2, py + 10, `${titleIcon} ${titleText}`, {
+      fontSize: '16px', color: titleColor, fontFamily: 'monospace',
+    }).setOrigin(0.5, 0);
+    this.container.add(title);
+
+    // Errors counter
+    this.errorsText = scene.add.text(GAME_WIDTH / 2, py + 32, `Intentos fallidos: 0 / ${this.maxErrors}`, {
+      fontSize: '13px', color: '#aaaaaa', fontFamily: 'monospace',
+    }).setOrigin(0.5, 0);
+    this.container.add(this.errorsText);
+
+    // Instructions
+    const inst = scene.add.text(GAME_WIDTH / 2, py + 50, 'Encuentra todas las parejas', {
+      fontSize: '12px', color: '#888888', fontFamily: 'monospace',
+    }).setOrigin(0.5, 0);
+    this.container.add(inst);
+
+    // Card grid
+    const cardW = 64;
+    const cardH = 72;
+    const gap = 10;
+    const gridW = cols * (cardW + gap) - gap;
+    const gridX = (GAME_WIDTH - gridW) / 2;
+    const gridY = py + 72;
+
+    cardData.forEach((spriteId, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const cx = gridX + col * (cardW + gap);
+      const cy = gridY + row * (cardH + gap);
+
+      const bg = scene.add.graphics();
+      this.drawCardBack(bg, cx, cy, cardW, cardH);
+      this.container.add(bg);
+
+      const hit = scene.add.rectangle(cx + cardW / 2, cy + cardH / 2, cardW, cardH)
+        .setInteractive().setAlpha(0.01);
+      this.container.add(hit);
+
+      const card: MemoryCard = {
+        spriteId, index: i, flipped: false, matched: false,
+        bg, sprite: null, hit,
+      };
+
+      hit.on('pointerover', () => {
+        if (card.matched || card.flipped || this.locked) return;
+        bg.clear();
+        this.drawCardBack(bg, cx, cy, cardW, cardH, true);
+      });
+      hit.on('pointerout', () => {
+        if (card.matched || card.flipped || this.locked) return;
+        bg.clear();
+        this.drawCardBack(bg, cx, cy, cardW, cardH);
+      });
+      hit.on('pointerdown', () => this.flipCard(card, cx, cy, cardW, cardH));
+
+      this.cards.push(card);
+    });
+  }
+
+  private drawCardBack(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, hover = false): void {
+    g.fillStyle(hover ? 0x444466 : 0x2a2a4a, 1);
+    g.fillRoundedRect(x, y, w, h, 6);
+    g.lineStyle(2, hover ? 0x8888cc : 0x555577);
+    g.strokeRoundedRect(x, y, w, h, 6);
+    // Question mark
+    g.fillStyle(hover ? 0x8888cc : 0x555577);
+    g.fillRoundedRect(x + w / 2 - 8, y + h / 2 - 10, 16, 20, 4);
+  }
+
+  private drawCardFace(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, matched: boolean): void {
+    g.fillStyle(matched ? 0x224422 : 0x333355, 1);
+    g.fillRoundedRect(x, y, w, h, 6);
+    g.lineStyle(2, matched ? 0x44aa44 : 0x8888cc);
+    g.strokeRoundedRect(x, y, w, h, 6);
+  }
+
+  private flipCard(card: MemoryCard, cx: number, cy: number, cardW: number, cardH: number): void {
+    if (this.locked || card.flipped || card.matched || this.finished) return;
+
+    card.flipped = true;
+    card.bg.clear();
+    this.drawCardFace(card.bg, cx, cy, cardW, cardH, false);
+
+    // Show sprite
+    const textureKey = this.scene.textures.exists(card.spriteId) ? card.spriteId : 'character-placeholder';
+    const sprite = this.scene.add.sprite(cx + cardW / 2, cy + cardH / 2, textureKey).setDepth(401);
+    // Play animation if available
+    const animKey = card.spriteId + '_walk';
+    if (this.scene.anims.exists(animKey)) sprite.play(animKey);
+    this.container.add(sprite);
+    card.sprite = sprite;
+
+    this.flippedCards.push(card);
+
+    if (this.flippedCards.length === 2) {
+      this.locked = true;
+      const [a, b] = this.flippedCards;
+
+      if (a.spriteId === b.spriteId) {
+        // Match!
+        a.matched = true;
+        b.matched = true;
+        this.matchedPairs++;
+
+        // Green flash on matched cards
+        this.scene.time.delayedCall(300, () => {
+          // Redraw as matched
+          const aPos = this.getCardPosition(a.index);
+          const bPos = this.getCardPosition(b.index);
+          a.bg.clear(); this.drawCardFace(a.bg, aPos.x, aPos.y, aPos.w, aPos.h, true);
+          b.bg.clear(); this.drawCardFace(b.bg, bPos.x, bPos.y, bPos.w, bPos.h, true);
+
+          this.flippedCards = [];
+          this.locked = false;
+
+          if (this.matchedPairs >= this.totalPairs) {
+            this.finish(true);
+          }
+        });
+      } else {
+        // No match — count error
+        this.errors++;
+        this.errorsText.setText(`Intentos fallidos: ${this.errors} / ${this.maxErrors}`);
+        if (this.errors >= this.maxErrors) {
+          this.errorsText.setColor('#ff4444');
+        }
+
+        this.scene.time.delayedCall(700, () => {
+          // Flip back
+          [a, b].forEach(c => {
+            c.flipped = false;
+            if (c.sprite) { c.sprite.destroy(); c.sprite = null; }
+            const pos = this.getCardPosition(c.index);
+            c.bg.clear();
+            this.drawCardBack(c.bg, pos.x, pos.y, pos.w, pos.h);
+          });
+
+          this.flippedCards = [];
+          this.locked = false;
+
+          if (this.errors >= this.maxErrors) {
+            this.finish(false);
+          }
+        });
+      }
+    }
+  }
+
+  private getCardPosition(index: number): { x: number; y: number; w: number; h: number } {
+    const isElite = this.totalPairs > 6;
+    const cols = isElite ? 4 : 4;
+    const cardW = 64;
+    const cardH = 72;
+    const gap = 10;
+    const panelH = isElite ? 480 : 420;
+    const py = (GAME_HEIGHT - panelH) / 2;
+    const gridW = cols * (cardW + gap) - gap;
+    const gridX = (GAME_WIDTH - gridW) / 2;
+    const gridY = py + 72;
+
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    return {
+      x: gridX + col * (cardW + gap),
+      y: gridY + row * (cardH + gap),
+      w: cardW,
+      h: cardH,
+    };
+  }
+
+  private finish(success: boolean): void {
+    if (this.finished) return;
+    this.finished = true;
+    this.locked = true;
+
+    this.container.removeAll(true);
+
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(0x000000, 0.8);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.container.add(overlay);
+
+    const flash = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20,
+      success ? '¡Victoria! Todas las parejas encontradas' : 'Derrota... Demasiados intentos fallidos', {
+        fontSize: '16px', color: success ? '#44ff44' : '#ff4444', fontFamily: 'monospace',
+      }).setOrigin(0.5).setDepth(401);
+    this.container.add(flash);
+
+    this.scene.time.delayedCall(1200, () => {
+      this.onComplete(success, this);
+    });
+  }
+
+  showResult(title: string, lines: string[], autoCloseMs = 2500): void {
+    this.container.removeAll(true);
+
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(0x000000, 0.7);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.container.add(overlay);
+
+    const text = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, `${title}\n\n${lines.join('\n')}`, {
+      fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace',
+      backgroundColor: '#000000cc', padding: { x: 25, y: 18 },
+      align: 'center',
+    }).setOrigin(0.5).setDepth(401);
+    this.container.add(text);
+
+    this.scene.time.delayedCall(autoCloseMs, () => this.destroy());
+  }
+
+  destroy(): void {
+    this.container.destroy();
+  }
+}

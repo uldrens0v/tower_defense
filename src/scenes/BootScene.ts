@@ -111,6 +111,7 @@ export class BootScene extends Phaser.Scene {
 
     this.createTroopSprites();
     this.createTowerLevelVariants();
+    this.createThemedTiles();
     this.scene.start('PreloadScene');
   }
 
@@ -319,5 +320,99 @@ export class BootScene extends Phaser.Scene {
       Math.round(hue2rgb(p, q, h) * 255),
       Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
     ];
+  }
+
+  /** Generate themed tile textures for desert, cave, and jungle biomes */
+  private createThemedTiles(): void {
+    // Helper to create a 32x32 tile
+    const makeTile = (key: string, drawFn: (g: Phaser.GameObjects.Graphics) => void) => {
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      drawFn(g);
+      g.generateTexture(key, 32, 32);
+      g.destroy();
+    };
+
+    // ═══════════ DESERT ═══════════
+    makeTile('tile-path-desert', (g) => {
+      g.fillStyle(0xd4a843); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0xc99b3a); g.fillRect(4, 8, 24, 2);
+      g.fillStyle(0xdbb550); g.fillRect(10, 20, 12, 2);
+    });
+    makeTile('tile-buildable-desert', (g) => {
+      g.fillStyle(0xe8c95a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0xd4a843); g.fillRect(0, 0, 32, 4);
+      g.lineStyle(1, 0xc99b3a, 0.3); g.strokeRect(0, 0, 32, 32);
+    });
+    makeTile('tile-wall-desert', (g) => {
+      g.fillStyle(0xa07030); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x8a6028); g.fillRect(0, 0, 16, 16);
+      g.fillStyle(0x8a6028); g.fillRect(16, 16, 16, 16);
+      g.lineStyle(1, 0x705020, 0.5);
+      g.lineBetween(0, 16, 32, 16); g.lineBetween(16, 0, 16, 32);
+    });
+    makeTile('tile-decoration-desert', (g) => {
+      g.fillStyle(0xe8c95a); g.fillRect(0, 0, 32, 32);
+      // Cactus
+      g.fillStyle(0x448833); g.fillRect(14, 8, 4, 18);
+      g.fillRect(8, 12, 6, 4); g.fillRect(18, 16, 6, 4);
+      g.fillStyle(0x55aa44); g.fillRect(15, 8, 2, 16);
+    });
+
+    // ═══════════ CAVE ═══════════
+    makeTile('tile-path-cave', (g) => {
+      g.fillStyle(0x444455); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x3a3a4a); g.fillRect(6, 4, 8, 4);
+      g.fillStyle(0x4e4e60); g.fillRect(18, 22, 10, 4);
+    });
+    makeTile('tile-buildable-cave', (g) => {
+      g.fillStyle(0x555566); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x4a4a5a); g.fillRect(0, 0, 32, 4);
+      g.lineStyle(1, 0x3d3d4d, 0.4); g.strokeRect(0, 0, 32, 32);
+    });
+    makeTile('tile-wall-cave', (g) => {
+      g.fillStyle(0x2a2a3a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x333344); g.fillRect(2, 2, 12, 10);
+      g.fillStyle(0x333344); g.fillRect(18, 18, 12, 10);
+      // Crystal glints
+      g.fillStyle(0x6688cc); g.fillRect(22, 6, 3, 3);
+      g.fillStyle(0x88aadd); g.fillRect(8, 22, 2, 2);
+    });
+    makeTile('tile-decoration-cave', (g) => {
+      g.fillStyle(0x555566); g.fillRect(0, 0, 32, 32);
+      // Stalagmite
+      g.fillStyle(0x666678); g.fillTriangle(16, 6, 10, 28, 22, 28);
+      g.fillStyle(0x777788); g.fillTriangle(16, 10, 12, 26, 20, 26);
+    });
+
+    // ═══════════ JUNGLE ═══════════
+    makeTile('tile-path-jungle', (g) => {
+      g.fillStyle(0x6b4423); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x5a3a1e); g.fillRect(2, 12, 28, 3);
+      g.fillStyle(0x7a5030); g.fillRect(8, 24, 16, 2);
+    });
+    makeTile('tile-buildable-jungle', (g) => {
+      g.fillStyle(0x2d6b30); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x1e5a22); g.fillRect(0, 0, 32, 6);
+      g.fillStyle(0x388a3c); g.fillRect(4, 20, 8, 6);
+      g.lineStyle(1, 0x1a4d1e, 0.3); g.strokeRect(0, 0, 32, 32);
+    });
+    makeTile('tile-wall-jungle', (g) => {
+      g.fillStyle(0x1a3a1a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x224422); g.fillRect(0, 0, 16, 16);
+      g.fillStyle(0x224422); g.fillRect(16, 16, 16, 16);
+      // Vine
+      g.fillStyle(0x44aa44); g.fillRect(14, 0, 3, 32);
+      g.fillStyle(0x338833); g.fillRect(12, 8, 2, 4);
+      g.fillStyle(0x338833); g.fillRect(18, 20, 2, 4);
+    });
+    makeTile('tile-decoration-jungle', (g) => {
+      g.fillStyle(0x2d6b30); g.fillRect(0, 0, 32, 32);
+      // Tropical flower
+      g.fillStyle(0xff5588); g.fillCircle(16, 14, 5);
+      g.fillStyle(0xff7799); g.fillCircle(16, 14, 3);
+      g.fillStyle(0xffdd44); g.fillCircle(16, 14, 2);
+      // Leaf
+      g.fillStyle(0x44aa44); g.fillTriangle(16, 20, 6, 30, 26, 30);
+    });
   }
 }

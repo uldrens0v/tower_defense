@@ -22,6 +22,7 @@ export class MenuPanel {
 
   // External state checks — set by GameScene
   hasTowers: () => boolean = () => false;
+  isRoundActive: () => boolean = () => false;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -64,7 +65,7 @@ export class MenuPanel {
 
     // Buttons
     const buttons: MenuButton[] = [
-      { text: 'Entrar al Calabozo', event: 'menu:dungeon', y: panelY + 80 },
+      { text: 'Entrar al Calabozo', event: 'menu:dungeon', y: panelY + 80, disabledCheck: () => this.isRoundActive() },
       { text: 'Mejorar Torres', event: 'menu:upgrade_towers', y: panelY + 140, disabledCheck: () => !this.hasTowers() },
       { text: 'Inventario', event: 'menu:inventory', y: panelY + 200, disabledCheck: () => true },
       { text: 'Colección', event: 'menu:collection', y: panelY + 260 },

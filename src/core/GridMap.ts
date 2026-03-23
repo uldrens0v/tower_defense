@@ -11,9 +11,12 @@ export const TileType = {
 
 export type TileType = (typeof TileType)[keyof typeof TileType];
 
+export type MapTheme = 'prairie' | 'forest' | 'mountain' | 'abyss' | 'chaos' | 'desert' | 'cave' | 'jungle';
+
 export interface LevelData {
   id: string;
   name: string;
+  theme?: MapTheme;
   cols: number;
   rows: number;
   tiles: number[][];
@@ -55,6 +58,10 @@ export class GridMap {
     this.cols = levelData.cols;
     this.rows = levelData.rows;
     this.tiles = levelData.tiles.map(row => [...row] as TileType[]);
+  }
+
+  getTheme(): MapTheme {
+    return this.levelData.theme ?? 'prairie';
   }
 
   getTile(x: number, y: number): TileType {

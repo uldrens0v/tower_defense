@@ -12,6 +12,7 @@ export class CollectionUI {
 
   private ultimateProgress: Map<string, number> = new Map();
   private ownedInstances: Map<string, CharacterInstance> = new Map();
+  private ultimateCharges: Map<string, { charge: number; cooldown: number; active: boolean }> = new Map();
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -23,6 +24,7 @@ export class CollectionUI {
     ownedIds: Set<string>,
     ultimateProgress: Map<string, number>,
     ownedInstances?: Map<string, CharacterInstance>,
+    ultimateCharges?: Map<string, { charge: number; cooldown: number; active: boolean }>,
   ): void {
     this.container.removeAll(true);
     if (this.detailContainer) {
@@ -32,6 +34,7 @@ export class CollectionUI {
 
     this.ultimateProgress = ultimateProgress;
     this.ownedInstances = ownedInstances ?? new Map();
+    this.ultimateCharges = ultimateCharges ?? new Map();
 
     // Overlay
     const overlay = this.scene.add.graphics();
@@ -340,7 +343,7 @@ export class CollectionUI {
       dc.add(ultLine);
       ty += 36;
 
-      // Ultimate progress bar
+      // Ultimate progress bar (equipment)
       const progress = this.ultimateProgress.get(char.id) ?? 0;
       if (char.requiredEquipment.length > 0) {
         const reqLabel = this.scene.add.text(panelX + 30, ty, `Equipo requerido: ${char.requiredEquipment.length} piezas (${Math.floor(progress * 100)}%)`, {
@@ -358,6 +361,37 @@ export class CollectionUI {
         progressBar.lineStyle(1, 0x555555);
         progressBar.strokeRect(panelX + 30, ty, barW, 8);
         dc.add(progressBar);
+        ty += 16;
+      }
+
+      // Real-time ultimate charge bar (shown if troop is deployed)
+      const chargeInfo = this.ultimateCharges.get(char.id);
+      if (chargeInfo) {
+        const chargePct = Math.min(1, chargeInfo.charge / chargeInfo.cooldown);
+        const chargeSeconds = Math.floor(chargeInfo.charge);
+        const chargeLabel = chargeInfo.active
+          ? '⚡ HABILIDAD ACTIVA'
+          : chargePct >= 1
+            ? `⚡ ¡LISTA! (${chargeInfo.cooldown}s / ${chargeInfo.cooldown}s)`
+            : `⚡ Carga: ${chargeSeconds}s / ${chargeInfo.cooldown}s`;
+        const chargeColor = chargeInfo.active ? '#ffdd00' : chargePct >= 1 ? '#ff8800' : '#4488ff';
+
+        const chargeLabelText = this.scene.add.text(panelX + 30, ty, chargeLabel, {
+          fontSize: '12px', color: chargeColor, fontFamily: 'monospace',
+        });
+        dc.add(chargeLabelText);
+        ty += 14;
+
+        const barW = panelW - 80;
+        const chargeBar = this.scene.add.graphics();
+        chargeBar.fillStyle(0x222244);
+        chargeBar.fillRect(panelX + 30, ty, barW, 8);
+        const barColor = chargeInfo.active ? 0xffdd00 : chargePct >= 1 ? 0xff8800 : 0x4488ff;
+        chargeBar.fillStyle(barColor);
+        chargeBar.fillRect(panelX + 30, ty, barW * chargePct, 8);
+        chargeBar.lineStyle(1, 0x555577);
+        chargeBar.strokeRect(panelX + 30, ty, barW, 8);
+        dc.add(chargeBar);
         ty += 16;
       }
     }

@@ -5,7 +5,11 @@ import { GridMap } from '../../core/GridMap';
 import { TILE_SIZE } from '../../core/Constants';
 import { eventBus } from '../../core/EventBus';
 
+let _projIdCounter = 0;
+export function nextProjId(): string { return `p${++_projIdCounter}`; }
+
 export interface Projectile {
+  id: string;
   x: number;
   y: number;
   targetId: string;
@@ -103,6 +107,7 @@ export class DefenseSystem {
     if (damage <= 0) return;
 
     const proj: Projectile = {
+      id: nextProjId(),
       x: tower.worldX,
       y: tower.worldY,
       targetId: target.id,
