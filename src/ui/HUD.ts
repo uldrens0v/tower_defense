@@ -47,7 +47,7 @@ export class HUD {
     this.wallHPBar = scene.add.graphics();
     this.container.add(this.wallHPBar);
 
-    this.wallHPText = scene.add.text(720, 8, 'Muralla: 100/100', {
+    this.wallHPText = scene.add.text(720, 8, '🏰 100/100', {
       fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(this.wallHPText);
@@ -75,12 +75,12 @@ export class HUD {
     this.container.add(this.timerText);
 
     // Resources
-    this.goldText = scene.add.text(GAME_WIDTH - 150, 8, 'Oro: 0', {
+    this.goldText = scene.add.text(GAME_WIDTH - 150, 8, '💰 0', {
       fontSize: '13px', color: '#ffcc00', fontFamily: 'monospace',
     });
     this.container.add(this.goldText);
 
-    this.crystalText = scene.add.text(GAME_WIDTH - 150, 24, 'Cristales: 0', {
+    this.crystalText = scene.add.text(GAME_WIDTH - 150, 24, '💎 0', {
       fontSize: '13px', color: '#88ddff', fontFamily: 'monospace',
     });
     this.container.add(this.crystalText);
@@ -94,9 +94,17 @@ export class HUD {
 
   private setupEvents(): void {
     eventBus.on('wall:damaged', (_hp: unknown, _maxHp: unknown) => {
+      const prevHP = this.wallHP;
       this.wallHP = _hp as number;
       this.wallMaxHP = _maxHp as number;
       this.drawWallHP();
+      // Flash red when damaged
+      if (this.wallHP < prevHP) {
+        this.wallHPText.setColor('#ff4444');
+        this.scene.time.delayedCall(300, () => {
+          this.wallHPText.setColor('#ffffff');
+        });
+      }
     });
 
     eventBus.on('wave:start', (wave: unknown) => {
@@ -107,14 +115,15 @@ export class HUD {
     eventBus.on('resources:update', (gold: unknown, crystals: unknown) => {
       this.gold = gold as number;
       this.crystals = crystals as number;
-      this.goldText.setText(`Oro: ${this.gold}`);
-      this.crystalText.setText(`Cristales: ${this.crystals}`);
+      this.goldText.setText(`💰 ${this.gold}`);
+      this.crystalText.setText(`💎 ${this.crystals}`);
     });
   }
 
   setTotalWaves(total: number): void {
     this.totalWaves = total;
-    this.waveText.setText(`Ronda ${this.currentWave}/${this.totalWaves}`);
+    this.currentWave = 0;
+    this.waveText.setText(`Ronda 0/${this.totalWaves}`);
   }
 
   setWaveEnemies(enemies: WaveEnemyCount[]): void {
@@ -261,7 +270,7 @@ export class HUD {
     this.wallHPBar.fillStyle(color);
     this.wallHPBar.fillRect(barX, 24, barWidth * pct, 8);
 
-    this.wallHPText.setText(`Muralla: ${this.wallHP}/${this.wallMaxHP}`);
+    this.wallHPText.setText(`🏰 ${this.wallHP}/${this.wallMaxHP}`);
   }
 
   hide(): void {

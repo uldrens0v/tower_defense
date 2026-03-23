@@ -4,12 +4,14 @@ import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MAP_OFFSET_Y, MAP_HEIGHT, BOTTOM_BA
 import { GridMap, TileType } from '../core/GridMap';
 import type { LevelData } from '../core/GridMap';
 import { SaveSystem } from '../core/SaveSystem';
+import { ThemeMusic } from '../core/ThemeMusic';
 import { CharacterManager } from '../entities/characters/CharacterManager';
 import type { EnemyData, EnemyInstance } from '../entities/enemies/EnemyData';
 import { createEnemyInstance } from '../entities/enemies/EnemyData';
 import { DefenseSystem } from '../systems/combat/DefenseSystem';
 import { EnemyAI } from '../systems/combat/EnemyAI';
 import { DungeonGenerator } from '../systems/dungeon/DungeonGenerator';
+import type { DungeonData } from '../systems/dungeon/DungeonGenerator';
 import { ChestSystem } from '../systems/dungeon/ChestSystem';
 import { EquipmentSystem } from '../systems/dungeon/EquipmentSystem';
 import type { ItemData } from '../systems/dungeon/EquipmentSystem';
@@ -47,6 +49,8 @@ export class GameScene extends Phaser.Scene {
   private defenseSystem!: DefenseSystem;
   private enemyAI!: EnemyAI;
   private dungeonGenerator!: DungeonGenerator;
+  private currentDungeon: DungeonData | null = null;
+  private currentDungeonLevel = -1;
   private chestSystem!: ChestSystem;
   private equipmentSystem!: EquipmentSystem;
   private commanderSystem!: CommanderSystem;
@@ -119,6 +123,7 @@ export class GameScene extends Phaser.Scene {
   // Music
   private currentMusic: Phaser.Sound.BaseSound | null = null;
   private currentMusicKey: string | null = null;
+  private themeMusic: ThemeMusic = new ThemeMusic();
 
   // Troop system
   private troopSystem!: TroopSystem;
@@ -158,6 +163,16 @@ export class GameScene extends Phaser.Scene {
   private ultimateGlows: Map<string, { color: number }> = new Map();
   // Ultimate charge bar graphics
   private ultChargeGraphics: Phaser.GameObjects.Graphics | null = null;
+
+  // Floating damage/gold texts
+  private floatingTexts: { text: Phaser.GameObjects.Text; life: number; vy: number }[] = [];
+
+  // Kill counter per wave
+  private waveKills = 0;
+  private waveKillText: Phaser.GameObjects.Text | null = null;
+
+  // Level name display
+  private levelNameText: Phaser.GameObjects.Text | null = null;
 
   // Projectile texture per character
   private static readonly CHAR_PROJ_MAP: Record<string, string> = {
@@ -203,6 +218,38 @@ export class GameScene extends Phaser.Scene {
         eventBus.emit('game:ready');
       });
 
+      // Keyboard shortcuts
+      this.input.keyboard?.on('keydown-SPACE', () => {
+        if (this.gamePaused || this.menuPanel.isVisible() || this.inSubmenu) return;
+        if (this.gameState === 'preparing') {
+          this.playSfx('sfx_click');
+          this.startWave(this.currentWaveIndex);
+        }
+      });
+      this.input.keyboard?.on('keydown-A', () => {
+        if (this.gamePaused || this.inSubmenu) return;
+        this.autoplay = !this.autoplay;
+        this.playSfx('sfx_click');
+        this.updateAutoplayBtn();
+      });
+      this.input.keyboard?.on('keydown-S', () => {
+        if (this.gamePaused || this.inSubmenu) return;
+        this.playSfx('sfx_click');
+        this.speedMultiplier = this.speedMultiplier === 1 ? 3 : 1;
+        this.updateSpeedBtnVisual();
+      });
+      // Number keys 1-4 select towers
+      for (let i = 0; i < 4; i++) {
+        this.input.keyboard?.on(`keydown-${i + 1}`, () => {
+          if (this.gamePaused || this.menuPanel.isVisible() || this.inSubmenu) return;
+          this.playSfx('sfx_click');
+          this.selectedTowerIndex = this.selectedTowerIndex === i ? -1 : i;
+          this.selectedCharacterId = null;
+          this.hideTroopDropdown();
+          this.updateTowerButtonHighlights();
+        });
+      }
+
       console.log('[TD] GameScene create() completed successfully. State:', this.gameState);
     } catch (e) {
       console.error('[TD] Error in create():', e);
@@ -227,16 +274,17 @@ export class GameScene extends Phaser.Scene {
       this.enemyDB.set(enemy.id, enemy as EnemyData);
     }
 
-    // Load save if exists
+    // Load save if exists (only load persistent stats, NOT level progress)
     if (this.saveSystem.load()) {
       const data = this.saveSystem.getData();
-      this.currentLevelIndex = Math.min(data.currentLevelIndex, levelsData.length - 1);
-      // Gold always starts at 1000 on page reload
-      // this.gold = data.gold;
+      // Always start at level 0 on page reload so all levels are playable
+      this.currentLevelIndex = 0;
       this.crystals = data.crystals;
-      // Wall HP always starts full on page reload (like gold)
+      this.gold = 1000;
       this.wallHP = this.wallMaxHP;
     }
+    // Reset saved level index to 0
+    this.saveSystem.updateData({ currentLevelIndex: 0, currentWave: 0 });
 
     this.characterManager.load();
     this.equipmentSystem.load();
@@ -266,7 +314,7 @@ export class GameScene extends Phaser.Scene {
       for (let x = 0; x < this.gridMap.cols; x++) {
         const tile = this.gridMap.getTile(x, y);
         const theme = this.gridMap.getTheme();
-        const suffix = (theme !== 'prairie' && theme !== 'forest' && theme !== 'mountain' && theme !== 'abyss' && theme !== 'chaos') ? `-${theme}` : '';
+        const suffix = theme !== 'prairie' ? `-${theme}` : '';
         let textureKey = 'tile-buildable' + suffix;
         if (tile === TileType.PATH || tile === TileType.SPAWN || tile === TileType.EXIT) textureKey = 'tile-path' + suffix;
         else if (tile === TileType.WALL) textureKey = 'tile-wall' + suffix;
@@ -287,6 +335,9 @@ export class GameScene extends Phaser.Scene {
     const exitWorld = this.gridMap.gridToWorld(exitPt.x, exitPt.y);
     const wallSprite = this.add.sprite(exitWorld.x, exitWorld.y, 'wall_gate').setDepth(2);
     this.tileSprites.push(wallSprite);
+
+    // Show level name
+    this.showLevelName();
   }
 
   private isTouch(): boolean {
@@ -424,7 +475,13 @@ export class GameScene extends Phaser.Scene {
           });
 
           zone.on('pointerdown', (_pointer: Phaser.Input.Pointer) => {
-            if (_pointer.rightButtonDown()) return; // right-click cancels, not places
+            // Right-click: sell tower or cancel selection
+            if (_pointer.rightButtonDown()) {
+              if (this.towerSprites.has(`${x},${y}`)) {
+                this.sellTowerAt(x, y);
+              }
+              return;
+            }
             if (this.gameState !== 'playing' && this.gameState !== 'preparing') return;
             if (this.menuPanel.isVisible()) return;
 
@@ -470,6 +527,7 @@ export class GameScene extends Phaser.Scene {
               this.updateTowerButtonHighlights();
               this.clearPlacementPreview();
               this.playSfx('sfx_place');
+              SoundFX.towerPlace();
             } else {
               console.log('[TD] Cannot place tower at', x, y, '(already occupied?)');
             }
@@ -504,6 +562,12 @@ export class GameScene extends Phaser.Scene {
     eventBus.on('enemy:killed', (enemy: unknown) => {
       const e = enemy as EnemyInstance;
       this.gold += e.data.goldReward;
+      this.waveKills++;
+      this.updateWaveKillText();
+
+      // Floating gold text
+      this.spawnFloatingText(e.worldX, e.worldY - 10, `+${e.data.goldReward}g`, '#ffcc00');
+      SoundFX.goldEarned();
 
       // Update HUD wave enemy counter
       this.hud.onEnemyKilled(e.data.id);
@@ -519,12 +583,25 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
-    eventBus.on('enemy:damaged', () => {
+    eventBus.on('enemy:damaged', (...args: unknown[]) => {
       SoundFX.enemyHit();
+      // Floating damage number
+      const enemy = args[0] as EnemyInstance;
+      const dmg = args[1] as number;
+      if (enemy && dmg) {
+        this.spawnFloatingText(
+          enemy.worldX + (Math.random() - 0.5) * 12,
+          enemy.worldY - 16,
+          `-${dmg}`,
+          dmg >= 20 ? '#ff4444' : '#ffaa66',
+          dmg >= 20 ? '12px' : '9px'
+        );
+      }
     });
 
-    // Ultimate ability VFX
+    // Ultimate ability VFX + sound
     eventBus.on('ultimate:activated', (data: unknown) => {
+      SoundFX.ultimateActivate();
       this.spawnUltimateVFX(data as {
         troopId: string; charId: string; type: string;
         x: number; y: number; radius: number;
@@ -540,10 +617,18 @@ export class GameScene extends Phaser.Scene {
     eventBus.on('enemy:reached_end', (_enemy: unknown) => {
       this.wallHP -= 10;
       if (this.wallHP < 0) this.wallHP = 0;
-      SoundFX.wallHit();
+      SoundFX.enemyReachEnd();
       eventBus.emit('wall:damaged', this.wallHP, this.wallMaxHP);
 
+      // Screen shake
+      this.cameras.main.shake(200, 0.008);
+
+      // Red flash on wall
+      const e = _enemy as EnemyInstance;
+      this.spawnFloatingText(e.worldX, e.worldY - 6, '-10 HP', '#ff2222', '14px');
+
       if (this.wallHP <= 0) {
+        this.cameras.main.shake(500, 0.02);
         this.gameState = 'game_over';
         this.showGameOver();
       }
@@ -551,8 +636,12 @@ export class GameScene extends Phaser.Scene {
 
     eventBus.on('menu:dungeon', () => {
       this.inSubmenu = true;
-      const dungeon = this.dungeonGenerator.generate(this.currentWaveIndex + 1);
-      this.dungeonUI.show(dungeon);
+      // Persist dungeon per level: only generate a new one when level changes
+      if (!this.currentDungeon || this.currentDungeonLevel !== this.currentLevelIndex) {
+        this.currentDungeon = this.dungeonGenerator.generate(this.currentLevelIndex + 1);
+        this.currentDungeonLevel = this.currentLevelIndex;
+      }
+      this.dungeonUI.show(this.currentDungeon);
       this.gameState = 'dungeon';
       this.playMusic('music_dungeon');
     });
@@ -740,6 +829,8 @@ export class GameScene extends Phaser.Scene {
     if (this.previewRangeGraphics) this.previewRangeGraphics.setVisible(false);
     if (this.hoverRangeGraphics) this.hoverRangeGraphics.setVisible(false);
     if (this.troopProjectileGraphics) this.troopProjectileGraphics.setVisible(false);
+    if (this.waveKillText) this.waveKillText.setVisible(false);
+    if (this.levelNameText) this.levelNameText.setVisible(false);
   }
 
   /** Show the game scenario */
@@ -754,6 +845,8 @@ export class GameScene extends Phaser.Scene {
     for (const s of this.troopProjSprites.values()) s.setVisible(true);
     if (this.rangeGraphics) this.rangeGraphics.setVisible(true);
     if (this.troopProjectileGraphics) this.troopProjectileGraphics.setVisible(true);
+    if (this.waveKillText) this.waveKillText.setVisible(true);
+    if (this.levelNameText) this.levelNameText.setVisible(true);
   }
 
   /** Hide all game UI (HUD, bottom bar, start button, menu btn) for submenus */
@@ -807,7 +900,12 @@ export class GameScene extends Phaser.Scene {
 
     this.currentWaveIndex = waveIndex;
     this.gameState = 'playing';
-    this.playMusic('music_battle');
+    this.waveKills = 0;
+    if (this.waveKillText) { this.waveKillText.destroy(); this.waveKillText = null; }
+    // Play theme-specific procedural music
+    const theme = this.gridMap.getTheme();
+    this.stopMusic();
+    this.themeMusic.play(theme);
     const wave = waves[waveIndex];
 
     eventBus.emit('wave:start', waveIndex + 1);
@@ -844,6 +942,9 @@ export class GameScene extends Phaser.Scene {
       console.log('[TD] First update tick. delta:', delta, 'state:', this.gameState, 'queue:', this.spawnQueue.length);
       this.debugLogged = true;
     }
+
+    // Always update floating texts (even when paused)
+    this.updateFloatingTexts(delta / 1000);
 
     // Pause game when menu is open or game is paused
     if (this.gamePaused || this.menuPanel.isVisible()) return;
@@ -1193,6 +1294,23 @@ export class GameScene extends Phaser.Scene {
   private onWaveComplete(): void {
     SoundFX.waveComplete();
 
+    // Wave completion gold bonus
+    const bonus = 25 + this.currentWaveIndex * 10;
+    this.gold += bonus;
+    this.updateResources();
+
+    // Show bonus text in center
+    const bonusText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30,
+      `Ronda completada! +${bonus}g   ☠ ${this.waveKills} eliminados`, {
+        fontSize: '14px', color: '#ffdd44', fontFamily: 'monospace',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(200);
+    this.tweens.add({
+      targets: bonusText, y: bonusText.y - 40, alpha: 0,
+      duration: 2000, ease: 'Power2',
+      onComplete: () => bonusText.destroy(),
+    });
+
     // Auto-save
     this.saveSystem.updateData({
       currentWave: this.currentWaveIndex,
@@ -1324,11 +1442,24 @@ export class GameScene extends Phaser.Scene {
     overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.gameOverContainer.add(overlay);
 
-    const title = this.add.text(512, 180, '¡DERROTA!\nLa muralla ha caído', {
-      fontSize: '32px', color: '#ff2222', fontFamily: 'monospace',
-      align: 'center',
+    const title = this.add.text(512, 160, '¡DERROTA!', {
+      fontSize: '36px', color: '#ff2222', fontFamily: 'monospace',
+      align: 'center', stroke: '#660000', strokeThickness: 3,
     }).setOrigin(0.5);
     this.gameOverContainer.add(title);
+
+    const subtitle = this.add.text(512, 210, 'La muralla ha caído', {
+      fontSize: '16px', color: '#cc8888', fontFamily: 'monospace',
+      align: 'center',
+    }).setOrigin(0.5);
+    this.gameOverContainer.add(subtitle);
+
+    // Stats
+    const statsStr = `Ronda: ${this.currentWaveIndex + 1}/${this.gridMap.getWaves().length}  |  ☠ ${this.waveKills} eliminados`;
+    const statsText = this.add.text(512, 245, statsStr, {
+      fontSize: '12px', color: '#888888', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    this.gameOverContainer.add(statsText);
 
     // Level theme colors for button text
     const levelData = levelsData[this.currentLevelIndex] as LevelData;
@@ -1400,7 +1531,14 @@ export class GameScene extends Phaser.Scene {
   ];
 
   private restartAtLevel(levelIndex: number): void {
+    // Reset dungeon when changing level
+    if (levelIndex !== this.currentLevelIndex) {
+      this.currentDungeon = null;
+      this.currentDungeonLevel = -1;
+    }
+
     // Stop ALL sounds (music + SFX like defeat jingle)
+    this.themeMusic.stop();
     this.sound.stopAll();
     this.currentMusic = null;
     this.currentMusicKey = null;
@@ -1468,33 +1606,37 @@ export class GameScene extends Phaser.Scene {
     );
     this.victoryContainer.add(overlay);
 
-    const victoryText = this.add.text(GAME_WIDTH / 2, 240, '¡VICTORIA!\nNivel completado', {
-      fontSize: '32px', color: '#44ff44', fontFamily: 'monospace',
-      align: 'center',
+    const victoryText = this.add.text(GAME_WIDTH / 2, 220, '¡VICTORIA!', {
+      fontSize: '36px', color: '#ffd700', fontFamily: 'monospace',
+      align: 'center', stroke: '#996600', strokeThickness: 3,
     }).setOrigin(0.5);
     this.victoryContainer.add(victoryText);
+
+    const subtitleText = this.add.text(GAME_WIDTH / 2, 270, 'Nivel completado', {
+      fontSize: '18px', color: '#e0e0e0', fontFamily: 'monospace',
+      align: 'center',
+    }).setOrigin(0.5);
+    this.victoryContainer.add(subtitleText);
 
     if (hasNextLevel) {
       const nextLevelData = levelsData[this.currentLevelIndex] as LevelData;
       const nextLevelName = nextLevelData?.name ?? `Nivel ${this.currentLevelIndex + 1}`;
 
-      const nextBtn = this.add.text(GAME_WIDTH / 2, 340, `▶ Siguiente: "${nextLevelName}"`, {
-        fontSize: '18px', color: '#ffffff', fontFamily: 'monospace',
-        backgroundColor: '#225522', padding: { x: 20, y: 10 },
+      const nextLabel = this.add.text(GAME_WIDTH / 2, 330, `Ir al siguiente nivel:`, {
+        fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
+      }).setOrigin(0.5);
+      this.victoryContainer.add(nextLabel);
+
+      const nextBtn = this.add.text(GAME_WIDTH / 2, 370, `▶ ${nextLevelName}`, {
+        fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
+        backgroundColor: '#2a5a2a', padding: { x: 24, y: 12 },
       }).setOrigin(0.5).setInteractive();
       this.victoryContainer.add(nextBtn);
 
-      this.addHoverEffect(nextBtn, '#44ff44');
+      this.addHoverEffect(nextBtn, '#8fbc8f');
       nextBtn.on('pointerdown', () => {
         this.playSfx('sfx_click');
-        if (this.victoryContainer) {
-          this.victoryContainer.destroy();
-          this.victoryContainer = null;
-        }
-        this.cleanAllState();
-        this.loadLevel(this.currentLevelIndex);
-        this.setupInput();
-        this.enterPreparationPhase(0);
+        this.restartAtLevel(this.currentLevelIndex);
       });
     } else {
       // All levels completed
@@ -1573,6 +1715,14 @@ export class GameScene extends Phaser.Scene {
     this.hideTowerTooltip();
     this.clearPlacementPreview();
     this.clearHoverRange();
+    // Clear floating texts
+    for (const ft of this.floatingTexts) ft.text.destroy();
+    this.floatingTexts = [];
+    // Clear kill counter
+    if (this.waveKillText) { this.waveKillText.destroy(); this.waveKillText = null; }
+    this.waveKills = 0;
+    // Clear level name
+    if (this.levelNameText) { this.levelNameText.destroy(); this.levelNameText = null; }
     // Clear arrays
     this.activeEnemies = [];
     this.spawnQueue = [];
@@ -1730,19 +1880,32 @@ export class GameScene extends Phaser.Scene {
     this.hud.setWaveEnemies(this.buildWaveEnemyCounts(wave.enemies));
 
     // Start wave button — top bar, between round info and wall HP
-    this.startWaveBtn = this.add.text(512, 10, '⚔ INICIAR RONDA', {
-      fontSize: '13px', color: '#ffffff', fontFamily: 'monospace',
-      backgroundColor: '#226622', padding: { x: 12, y: 6 },
-    }).setOrigin(0.5, 0).setDepth(250).setInteractive();
+    this.startWaveBtn = this.add.text(512, 10, '⚔ INICIAR RONDA [ESPACIO]', {
+      fontSize: '13px', color: '#e0e0e0', fontFamily: 'monospace',
+      backgroundColor: '#2a5a2a', padding: { x: 12, y: 6 },
+    }).setOrigin(0.5, 0).setDepth(250).setInteractive().setAlpha(0);
+    // Fade in animation
+    this.tweens.add({ targets: this.startWaveBtn, alpha: 1, duration: 300 });
 
     this.startWaveBtn.on('pointerdown', () => {
       if (this.gameState !== 'preparing') return;
       this.playSfx('sfx_click');
       this.startWave(this.currentWaveIndex);
     });
-    this.addHoverEffect(this.startWaveBtn, '#44ff44');
+    this.addHoverEffect(this.startWaveBtn, '#8fbc8f');
 
     this.updateResources();
+
+    // Show shortcut hint on first wave
+    if (waveIndex === 0 && this.currentLevelIndex === 0) {
+      const hint = this.add.text(512, 50, 'Atajos: 1-4 Torres | A Auto | S Velocidad | Click-der Vender torre', {
+        fontSize: '9px', color: '#666688', fontFamily: 'monospace',
+      }).setOrigin(0.5, 0).setDepth(250);
+      this.time.delayedCall(8000, () => {
+        this.tweens.add({ targets: hint, alpha: 0, duration: 1000, onComplete: () => hint.destroy() });
+      });
+    }
+
     console.log('[TD] Preparation phase for wave', waveIndex + 1);
 
     // If autoplay is on and this is NOT the first wave of a new level, auto-start
@@ -1769,8 +1932,8 @@ export class GameScene extends Phaser.Scene {
       this.autoplayBtn = null;
     }
     const label = this.autoplay ? '▶▶ AUTO: ON' : '▶▶ AUTO: OFF';
-    const bgColor = this.autoplay ? '#225522' : '#333333';
-    const textColor = this.autoplay ? '#44ff44' : '#888888';
+    const bgColor = this.autoplay ? '#2a5a2a' : '#333333';
+    const textColor = this.autoplay ? '#8fbc8f' : '#888888';
 
     this.autoplayBtn = this.add.text(512, 32, label, {
       fontSize: '11px', color: textColor, fontFamily: 'monospace',
@@ -1847,6 +2010,7 @@ export class GameScene extends Phaser.Scene {
     const cy = BOTTOM_BAR_Y;
     const cont = this.add.container(cx, cy).setDepth(100);
 
+    this.speedBtnSize = { w: bw, h: bh };
     this.speedBg = this.add.graphics();
     this.speedBg.fillStyle(0x333333, 0.9);
     this.speedBg.fillRect(-bw / 2, -bh / 2, bw, bh);
@@ -1873,22 +2037,30 @@ export class GameScene extends Phaser.Scene {
       if (this.menuPanel.isVisible()) return;
       this.playSfx('sfx_click');
       this.speedMultiplier = this.speedMultiplier === 1 ? 3 : 1;
-      if (this.speedBtn && this.speedBg) {
-        this.speedBg.clear();
-        if (this.speedMultiplier === 3) {
-          this.speedBtn.setText('>>> x3');
-          this.speedBtn.setColor('#ff8844');
-          this.speedBg.fillStyle(0x553311, 0.9);
-        } else {
-          this.speedBtn.setText('>>> x1');
-          this.speedBtn.setColor('#aaaaaa');
-          this.speedBg.fillStyle(0x333333, 0.9);
-        }
-        this.speedBg.fillRect(-bw / 2, -bh / 2, bw, bh);
-      }
+      this.updateSpeedBtnVisual();
     });
     cont.add(hit);
     this.bottomBarContainers.push(cont);
+  }
+
+  private speedBtnSize = { w: 80, h: 24 };
+
+  private updateSpeedBtnVisual(): void {
+    const bw = this.speedBtnSize.w;
+    const bh = this.speedBtnSize.h;
+    if (this.speedBtn && this.speedBg) {
+      this.speedBg.clear();
+      if (this.speedMultiplier === 3) {
+        this.speedBtn.setText('>>> x3');
+        this.speedBtn.setColor('#ff8844');
+        this.speedBg.fillStyle(0x553311, 0.9);
+      } else {
+        this.speedBtn.setText('>>> x1');
+        this.speedBtn.setColor('#aaaaaa');
+        this.speedBg.fillStyle(0x333333, 0.9);
+      }
+      this.speedBg.fillRect(-bw / 2, -bh / 2, bw, bh);
+    }
   }
 
   // ---- Tower Level Visuals ----
@@ -1967,8 +2139,8 @@ export class GameScene extends Phaser.Scene {
     bg.strokeRect(-btnW / 2, -btnH / 2, btnW, btnH);
     container.add(bg);
 
-    const txt = this.add.text(0, 0, 'Tropas', {
-      fontSize: touch ? '12px' : '11px', color: '#88ff88', fontFamily: 'monospace',
+    const txt = this.add.text(0, 0, '⚔ Tropas', {
+      fontSize: touch ? '12px' : '11px', color: '#b8d4b8', fontFamily: 'monospace',
     }).setOrigin(0.5);
     container.add(txt);
 
@@ -1978,7 +2150,7 @@ export class GameScene extends Phaser.Scene {
     const hitArea = this.add.rectangle(0, 0, btnW, btnH).setInteractive().setAlpha(0.01);
     hitArea.on('pointerover', () => {
       border.clear();
-      border.lineStyle(2, 0x88ff88);
+      border.lineStyle(2, 0x8fbc8f);
       border.strokeRect(-btnW / 2, -btnH / 2, btnW, btnH);
     });
     hitArea.on('pointerout', () => {
@@ -2493,6 +2665,8 @@ export class GameScene extends Phaser.Scene {
 
   private playMusic(key: string, loop = true): void {
     if (this.currentMusicKey === key) return;
+    // Stop procedural theme music when switching to file-based music
+    this.themeMusic.stop();
     if (this.currentMusic) {
       this.currentMusic.stop();
       this.currentMusic.destroy();
@@ -2511,6 +2685,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stopMusic(): void {
+    this.themeMusic.stop();
     if (this.currentMusic) {
       this.currentMusic.stop();
       this.currentMusic.destroy();
@@ -3148,6 +3323,71 @@ export class GameScene extends Phaser.Scene {
       this.ultChargeGraphics.lineStyle(1, info.active ? 0xffff44 : 0x882222, 0.8);
       this.ultChargeGraphics.strokeRect(bx, by, barW, barH);
     }
+  }
+
+  // ---- Floating Text System ----
+  private spawnFloatingText(x: number, y: number, msg: string, color = '#ffffff', fontSize = '10px'): void {
+    const text = this.add.text(x, y, msg, {
+      fontSize, color, fontFamily: 'monospace', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(25);
+    this.floatingTexts.push({ text, life: 0.8, vy: -40 });
+  }
+
+  private updateFloatingTexts(deltaSec: number): void {
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const ft = this.floatingTexts[i];
+      ft.life -= deltaSec;
+      ft.text.y += ft.vy * deltaSec;
+      ft.text.setAlpha(Math.max(0, ft.life / 0.8));
+      if (ft.life <= 0) {
+        ft.text.destroy();
+        this.floatingTexts.splice(i, 1);
+      }
+    }
+  }
+
+  // ---- Kill counter ----
+  private updateWaveKillText(): void {
+    if (!this.waveKillText) {
+      this.waveKillText = this.add.text(GAME_WIDTH / 2, MAP_OFFSET_Y + 4, '', {
+        fontSize: '10px', color: '#cc8888', fontFamily: 'monospace',
+      }).setOrigin(0.5, 0).setDepth(101);
+    }
+    this.waveKillText.setText(`☠ ${this.waveKills}`);
+  }
+
+  // ---- Level name in top bar ----
+  private showLevelName(): void {
+    if (this.levelNameText) this.levelNameText.destroy();
+    const levelData = levelsData[this.currentLevelIndex] as LevelData;
+    const name = levelData?.name ?? `Nivel ${this.currentLevelIndex + 1}`;
+    const color = GameScene.LEVEL_NAME_COLORS[this.currentLevelIndex] ?? '#ffffff';
+    this.levelNameText = this.add.text(GAME_WIDTH / 2 + 100, 14, name, {
+      fontSize: '11px', color, fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setDepth(101);
+  }
+
+  // ---- Sell Tower (right-click on placed tower) ----
+  private sellTowerAt(gx: number, gy: number): void {
+    const key = `${gx},${gy}`;
+    const tower = this.defenseSystem.getTowers().find(t => t.gridX === gx && t.gridY === gy);
+    if (!tower) return;
+
+    const refund = Math.floor(tower.data.cost * 0.6);
+    this.gold += refund;
+    this.updateResources();
+
+    // Remove tower
+    this.defenseSystem.removeTower(gx, gy);
+    const sprite = this.towerSprites.get(key);
+    if (sprite) {
+      sprite.destroy();
+      this.towerSprites.delete(key);
+    }
+
+    SoundFX.towerSell();
+    this.spawnFloatingText(tower.worldX, tower.worldY, `+${refund}g`, '#88ff88', '11px');
   }
 
   private updateHitParticles(deltaSec: number): void {

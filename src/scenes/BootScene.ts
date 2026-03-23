@@ -83,7 +83,7 @@ export class BootScene extends Phaser.Scene {
     // Music
     this.load.audio('music_menu', 'assets/music/menu.mp3');
     this.load.audio('music_battle', 'assets/music/battle.mp3');
-    this.load.audio('music_dungeon', 'assets/music/dungeon.mp3');
+    this.load.audio('music_dungeon', 'assets/music/dungeon.ogg');
     this.load.audio('music_boss_defeat', 'assets/music/boss_defeat.mp3');
 
     // SFX
@@ -331,6 +331,146 @@ export class BootScene extends Phaser.Scene {
       g.generateTexture(key, 32, 32);
       g.destroy();
     };
+
+    // ═══════════ FOREST ═══════════
+    makeTile('tile-path-forest', (g) => {
+      g.fillStyle(0x5a7a3a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x4d6b30); g.fillRect(3, 10, 26, 3);
+      g.fillStyle(0x6b8a48); g.fillRect(12, 22, 10, 2);
+      // Fallen leaves
+      g.fillStyle(0x8a6b30); g.fillRect(6, 6, 3, 2);
+      g.fillStyle(0x7a5a28); g.fillRect(22, 18, 2, 2);
+    });
+    makeTile('tile-buildable-forest', (g) => {
+      g.fillStyle(0x4a8a3e); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x3d7a32); g.fillRect(0, 0, 32, 6);
+      g.fillStyle(0x55994a); g.fillRect(20, 22, 6, 4);
+      g.lineStyle(1, 0x2d6a24, 0.3); g.strokeRect(0, 0, 32, 32);
+    });
+    makeTile('tile-wall-forest', (g) => {
+      g.fillStyle(0x3a5a2a); g.fillRect(0, 0, 32, 32);
+      // Tree trunk
+      g.fillStyle(0x6b4a28); g.fillRect(12, 8, 8, 24);
+      g.fillStyle(0x7a5a30); g.fillRect(14, 10, 4, 20);
+      // Canopy
+      g.fillStyle(0x2a6a22); g.fillCircle(16, 8, 10);
+      g.fillStyle(0x338833); g.fillCircle(16, 8, 7);
+    });
+    makeTile('tile-decoration-forest', (g) => {
+      g.fillStyle(0x4a8a3e); g.fillRect(0, 0, 32, 32);
+      // Mushroom
+      g.fillStyle(0xcc4444); g.fillCircle(16, 14, 6);
+      g.fillStyle(0xdddddd); g.fillRect(14, 14, 4, 10);
+      g.fillStyle(0xffffff); g.fillCircle(14, 12, 2);
+      g.fillStyle(0xffffff); g.fillCircle(19, 13, 1);
+    });
+
+    // ═══════════ MOUNTAIN ═══════════
+    makeTile('tile-path-mountain', (g) => {
+      g.fillStyle(0x8a8a8a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x7a7a7a); g.fillRect(4, 6, 24, 3);
+      g.fillStyle(0x9a9a9a); g.fillRect(10, 20, 14, 2);
+    });
+    makeTile('tile-buildable-mountain', (g) => {
+      g.fillStyle(0x999999); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x8a8a8a); g.fillRect(0, 0, 32, 4);
+      g.lineStyle(1, 0x777777, 0.3); g.strokeRect(0, 0, 32, 32);
+      // Pebbles
+      g.fillStyle(0x777777); g.fillRect(6, 14, 3, 2);
+      g.fillStyle(0xaaaaaa); g.fillRect(22, 24, 2, 2);
+    });
+    makeTile('tile-wall-mountain', (g) => {
+      g.fillStyle(0x666666); g.fillRect(0, 0, 32, 32);
+      // Rock layers
+      g.fillStyle(0x555555); g.fillRect(0, 0, 32, 10);
+      g.fillStyle(0x5a5a5a); g.fillRect(0, 20, 32, 12);
+      g.lineStyle(1, 0x4a4a4a, 0.5);
+      g.lineBetween(0, 10, 32, 10); g.lineBetween(0, 20, 32, 20);
+      // Snow cap
+      g.fillStyle(0xddddee); g.fillTriangle(16, 2, 8, 10, 24, 10);
+    });
+    makeTile('tile-decoration-mountain', (g) => {
+      g.fillStyle(0x999999); g.fillRect(0, 0, 32, 32);
+      // Rock pile
+      g.fillStyle(0x777777); g.fillTriangle(16, 8, 6, 26, 26, 26);
+      g.fillStyle(0x888888); g.fillTriangle(16, 12, 10, 24, 22, 24);
+      // Snow
+      g.fillStyle(0xccccdd); g.fillRect(12, 8, 8, 3);
+    });
+
+    // ═══════════ ABYSS ═══════════
+    makeTile('tile-path-abyss', (g) => {
+      g.fillStyle(0x1a1a2e); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x22223a); g.fillRect(4, 8, 24, 3);
+      g.fillStyle(0x2a2a44); g.fillRect(12, 22, 10, 2);
+      // Purple cracks
+      g.fillStyle(0x6622aa); g.fillRect(8, 14, 2, 6);
+      g.fillStyle(0x5518aa); g.fillRect(20, 4, 1, 8);
+    });
+    makeTile('tile-buildable-abyss', (g) => {
+      g.fillStyle(0x22223a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x1a1a30); g.fillRect(0, 0, 32, 4);
+      g.lineStyle(1, 0x332266, 0.4); g.strokeRect(0, 0, 32, 32);
+      // Faint glow
+      g.fillStyle(0x442288, 0.15); g.fillCircle(16, 16, 8);
+    });
+    makeTile('tile-wall-abyss', (g) => {
+      g.fillStyle(0x111122); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x1a1a33); g.fillRect(0, 0, 16, 16);
+      g.fillStyle(0x1a1a33); g.fillRect(16, 16, 16, 16);
+      // Purple veins
+      g.lineStyle(1, 0x6622cc, 0.4);
+      g.lineBetween(4, 4, 14, 14); g.lineBetween(28, 6, 18, 28);
+      // Eye
+      g.fillStyle(0x8844cc); g.fillCircle(24, 8, 3);
+      g.fillStyle(0xaa66ff); g.fillCircle(24, 8, 1);
+    });
+    makeTile('tile-decoration-abyss', (g) => {
+      g.fillStyle(0x22223a); g.fillRect(0, 0, 32, 32);
+      // Dark crystal
+      g.fillStyle(0x5522aa); g.fillTriangle(16, 4, 8, 24, 24, 24);
+      g.fillStyle(0x7744cc); g.fillTriangle(16, 8, 11, 22, 21, 22);
+      // Glow
+      g.fillStyle(0xaa66ff, 0.2); g.fillCircle(16, 16, 10);
+    });
+
+    // ═══════════ CHAOS ═══════════
+    makeTile('tile-path-chaos', (g) => {
+      g.fillStyle(0x3a1a1a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x441a1a); g.fillRect(4, 8, 24, 3);
+      // Lava cracks
+      g.fillStyle(0xff4400); g.fillRect(8, 14, 2, 4);
+      g.fillStyle(0xff6622); g.fillRect(18, 22, 3, 2);
+      g.fillStyle(0xff3300); g.fillRect(24, 6, 1, 6);
+    });
+    makeTile('tile-buildable-chaos', (g) => {
+      g.fillStyle(0x442222); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x3a1a1a); g.fillRect(0, 0, 32, 4);
+      g.lineStyle(1, 0x662222, 0.4); g.strokeRect(0, 0, 32, 32);
+      // Ember
+      g.fillStyle(0xff6600, 0.2); g.fillCircle(8, 20, 3);
+    });
+    makeTile('tile-wall-chaos', (g) => {
+      g.fillStyle(0x2a0a0a); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0x331111); g.fillRect(0, 0, 16, 16);
+      g.fillStyle(0x331111); g.fillRect(16, 16, 16, 16);
+      // Lava veins
+      g.lineStyle(1.5, 0xff4400, 0.6);
+      g.lineBetween(2, 12, 16, 4); g.lineBetween(16, 28, 30, 18);
+      // Skull
+      g.fillStyle(0xccccbb); g.fillCircle(16, 16, 4);
+      g.fillStyle(0x2a0a0a); g.fillRect(14, 14, 2, 2);
+      g.fillStyle(0x2a0a0a); g.fillRect(18, 14, 2, 2);
+    });
+    makeTile('tile-decoration-chaos', (g) => {
+      g.fillStyle(0x442222); g.fillRect(0, 0, 32, 32);
+      // Demon statue
+      g.fillStyle(0x882222); g.fillTriangle(16, 4, 6, 28, 26, 28);
+      g.fillStyle(0xaa3333); g.fillTriangle(16, 8, 10, 26, 22, 26);
+      // Glowing eyes
+      g.fillStyle(0xff4400); g.fillCircle(13, 16, 2);
+      g.fillStyle(0xff4400); g.fillCircle(19, 16, 2);
+    });
 
     // ═══════════ DESERT ═══════════
     makeTile('tile-path-desert', (g) => {

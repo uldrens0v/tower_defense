@@ -4,6 +4,14 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../core/Constants';
 interface TutorialSection {
   title: string;
   lines: string[];
+  /** Illustrations to render below text lines */
+  illustrations?: TutorialIllustration[];
+}
+
+interface TutorialIllustration {
+  type: 'sprites' | 'arrow_sequence' | 'room_icons' | 'range_demo';
+  y: number; // relative y from start of section content
+  data?: unknown;
 }
 
 const SECTIONS: TutorialSection[] = [
@@ -13,99 +21,151 @@ const SECTIONS: TutorialSection[] = [
       '--- OBJETIVO ---',
       'Defiende la muralla de las oleadas de enemigos.',
       'Si la vida de la muralla llega a 0, pierdes.',
-      'Coloca defensas y tropas para detenerlos.',
       '',
       '--- COLOCAR DEFENSAS ---',
       'Selecciona una torre en la barra inferior y',
-      'haz clic en una casilla edificable (verde) para',
-      'colocarla. Necesitas oro suficiente.',
+      'haz clic en una casilla edificable para colocarla.',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
       '',
       '--- COLOCAR TROPAS ---',
-      'Pulsa "Tropas" en la barra inferior para ver',
-      'tus personajes. Selecciona uno y colócalo en',
-      'el mapa. Puedes ponerlo sobre una torre.',
+      'Pulsa "Tropas" para ver tus personajes.',
+      'Selecciona uno y colócalo en el mapa.',
+      'Puedes ponerlo encima de una torre.',
+      '',
+      '',
+      '',
+      '',
+      '',
       '',
       '--- TERRESTRE vs AEREO ---',
-      'Los enemigos pueden ser terrestres o aereos.',
-      'Torre de Flechas y Canon solo atacan terrestres.',
-      'Balista Aerea solo ataca aereos.',
-      'Torre Arcana ataca ambos pero con penalizacion.',
-      'Las tropas atacan segun su tipo.',
+      'Flechas/Canon: solo terrestres.',
+      'Balista: solo aereos. Arcana: ambos.',
       '',
-      '--- RANGOS ---',
-      'Cada torre/tropa tiene un rango de ataque.',
-      'Pulsa "Rangos" en la barra inferior para ver',
-      'todos los rangos a la vez. Tambien puedes pasar',
-      'el cursor sobre una unidad para ver su rango.',
       '',
-      '--- VELOCIDAD ---',
-      'Pulsa ">>> x1" para acelerar el juego a x3.',
-      'Pulsa de nuevo para volver a velocidad normal.',
       '',
-      '--- RONDAS ---',
-      'Pasa el cursor sobre "Ronda N" en la esquina',
-      'superior izquierda para ver los enemigos de',
-      'la ronda actual con sus cantidades en tiempo real.',
+      '',
+      '',
+      '',
+      '',
+      '--- ATAJOS DE TECLADO ---',
+      'ESPACIO: Iniciar ronda',
+      '1-4: Seleccionar torre',
+      'A: Toggle autoplay',
+      'S: Toggle velocidad x1/x3',
+      'Click-der sobre torre: Vender (60% reembolso)',
+    ],
+    illustrations: [
+      { type: 'arrow_sequence', y: 8 * 16 + 4, data: {
+        label: 'Colocar torres:',
+        items: [
+          { sprite: 'tower_arrow', caption: 'Flechas' },
+          { sprite: 'tower_cannon', caption: 'Cañón' },
+          { sprite: 'tower_antiair', caption: 'Balista' },
+          { sprite: 'tower_magic', caption: 'Arcana' },
+        ]
+      }},
+      { type: 'arrow_sequence', y: 18 * 16 + 4, data: {
+        label: 'Colocar tropas sobre el mapa:',
+        items: [
+          { sprite: 'char_soldier', caption: 'Soldado' },
+          { sprite: 'char_archer', caption: 'Arquero' },
+          { sprite: 'char_mage', caption: 'Mago' },
+          { sprite: 'char_knight', caption: 'Caballero' },
+        ]
+      }},
+      { type: 'range_demo', y: 28 * 16 + 4, data: {
+        items: [
+          { sprite: 'tower_arrow', label: 'Flechas', target: 'ground', color: 0x44ff44 },
+          { sprite: 'tower_cannon', label: 'Cañón', target: 'ground', color: 0xff8844 },
+          { sprite: 'tower_antiair', label: 'Balista', target: 'air', color: 0x44ccff },
+          { sprite: 'tower_magic', label: 'Arcana', target: 'both', color: 0xcc44ff },
+        ]
+      }},
     ],
   },
   {
     title: 'Calabozo',
     lines: [
       '--- ACCESO ---',
-      'Pulsa ESC (o el boton menu) y selecciona',
+      'Pulsa ESC (o menu) y selecciona',
       '"Entrar al Calabozo" entre rondas.',
-      '',
-      '--- NAVEGACION ---',
-      'El calabozo es un mapa con varias habitaciones',
-      'conectadas. Haz clic en una habitacion adyacente',
-      'a la actual para moverte a ella.',
       '',
       '--- TIPOS DE HABITACION ---',
       '',
-      'Descanso (primera sala):',
-      '  Punto de inicio seguro.',
       '',
-      'Combate:',
-      '  Enfrentamiento contra enemigos del calabozo.',
-      '  Ganar otorga recompensas de oro y experiencia.',
       '',
-      'Cofre:',
-      '  Resuelve un desafio matematico para abrir',
-      '  el cofre. Si aciertas, obtienes recompensas',
-      '  como oro, cristales, equipo o nuevos personajes.',
-      '  Si fallas, el cofre se cierra.',
       '',
-      'Elite:',
-      '  Enemigos mas fuertes con mejores recompensas.',
       '',
-      'Jefe (ultima sala):',
-      '  Desafio de escritura rapida. Escribe la frase',
-      '  antes de que se acabe el tiempo para ganar',
-      '  grandes recompensas.',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ],
+    illustrations: [
+      { type: 'room_icons', y: 5 * 16 + 4, data: {
+        rooms: [
+          { icon: '🏕', color: 0x336633, name: 'Descanso', desc: 'Punto seguro. Recupera\nHP de la muralla.' },
+          { icon: '⚔', color: 0x663333, name: 'Combate', desc: 'Desafio de memoria.\nGana oro si aciertas.' },
+          { icon: '📦', color: 0x665522, name: 'Cofre', desc: 'Resuelve matematicas\npara obtener items.' },
+          { icon: '💀', color: 0x552244, name: 'Elite', desc: 'Desafio de memoria\ndificil. Mejor botin.' },
+          { icon: '👹', color: 0x442222, name: 'Jefe', desc: 'Escritura rapida.\nGrandes recompensas.' },
+        ]
+      }},
     ],
   },
   {
     title: 'Mejorar torres',
     lines: [
       '--- ACCESO ---',
-      'Pulsa ESC (o el boton menu) y selecciona',
+      'Pulsa ESC (o menu) y selecciona',
       '"Mejorar Torres" entre rondas.',
       '',
-      '--- REQUISITO ---',
-      'Solo puedes acceder si tienes al menos una',
-      'torre colocada en el mapa. Si solo tienes',
-      'tropas o no tienes nada colocado, esta opcion',
-      'no estara disponible.',
-      '',
       '--- FUNCIONAMIENTO ---',
-      'Gasta cristales para subir el nivel de un tipo',
-      'de torre. La mejora se aplica a TODAS las torres',
-      'de ese tipo que tengas colocadas y a las que',
-      'coloques en el futuro.',
+      'Gasta oro para subir el nivel de un tipo',
+      'de torre. La mejora se aplica a TODAS las',
+      'torres de ese tipo que tengas colocadas.',
       '',
-      'Cada nivel aumenta el dano y las estadisticas',
-      'de la torre. El coste en cristales sube con',
-      'cada nivel.',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ],
+    illustrations: [
+      { type: 'arrow_sequence', y: 9 * 16 + 4, data: {
+        label: 'Ejemplo de mejora:',
+        isUpgrade: true,
+        items: [
+          { sprite: 'tower_cannon', caption: 'Nv.1\nDaño: 40' },
+          { sprite: 'tower_cannon', caption: 'Nv.2\nDaño: 46', tint: 0x88aaff },
+          { sprite: 'tower_cannon', caption: 'Nv.3\nDaño: 52', tint: 0xffaa44 },
+          { sprite: 'tower_cannon', caption: 'Nv.4\nDaño: 58', tint: 0xff4444, scale: 1.15 },
+        ]
+      }},
     ],
   },
   {
@@ -122,20 +182,33 @@ const SECTIONS: TutorialSection[] = [
     title: 'Coleccion',
     lines: [
       '--- ACCESO ---',
-      'Pulsa ESC (o el boton menu) y selecciona',
+      'Pulsa ESC (o menu) y selecciona',
       '"Coleccion" entre rondas.',
       '',
       '--- CONTENIDO ---',
-      'Aqui puedes ver todos los tipos de tropa',
-      'disponibles en el juego.',
+      'Ve todos los personajes disponibles.',
+      'Haz clic para ver sus estadisticas.',
       '',
-      'Haz clic en cualquier personaje para ver',
-      'sus estadisticas detalladas: vida, dano,',
-      'defensa, velocidad de ataque, rango y',
-      'velocidad de movimiento.',
       '',
-      'Tambien muestra sus habilidades pasivas',
-      'y su sprite a tamaño ampliado.',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ],
+    illustrations: [
+      { type: 'arrow_sequence', y: 8 * 16 + 4, data: {
+        label: 'Ejemplos de tropas por rareza:',
+        items: [
+          { sprite: 'char_soldier', caption: 'Comun', captionColor: '#aaaaaa' },
+          { sprite: 'char_knight', caption: 'Poco comun', captionColor: '#44cc44' },
+          { sprite: 'char_paladin', caption: 'Raro', captionColor: '#4488ff' },
+          { sprite: 'char_dragon_knight', caption: 'Epico', captionColor: '#cc44ff' },
+          { sprite: 'char_phoenix', caption: 'Mitico', captionColor: '#ff4444' },
+        ]
+      }},
     ],
   },
 ];
@@ -161,7 +234,7 @@ export class TutorialPanel {
   private readonly contentAreaH: number;
   private readonly headerH = 50;
   private readonly sectionHeaderH = 32;
-  private readonly startBtnTotalH = 46; // button height + padding
+  private readonly startBtnTotalH = 46;
 
   private onClose: () => void;
 
@@ -320,7 +393,6 @@ export class TutorialPanel {
     });
     hitArea.on('pointerdown', () => {
       if (this.openSection === index) {
-        // Close current section
         this.closeSection(index);
         this.openSection = -1;
         txt.setColor('#cccccc');
@@ -330,7 +402,6 @@ export class TutorialPanel {
         headerBg.fillStyle(0x333355, 0.9);
         headerBg.fillRect(this.panelX + 10, y + 2, this.panelW - 20, this.sectionHeaderH - 4);
       } else {
-        // Close previous section if open
         if (this.openSection >= 0) {
           const prevIdx = this.openSection;
           this.closeSection(prevIdx);
@@ -342,7 +413,6 @@ export class TutorialPanel {
           prevBg.bg.fillStyle(0x333355, 0.9);
           prevBg.bg.fillRect(this.panelX + 10, prevBg.y + 2, this.panelW - 20, this.sectionHeaderH - 4);
         }
-        // Open new section
         this.openSection = index;
         txt.setColor('#ffcc00');
         arrow.setText('\u25BC');
@@ -367,8 +437,10 @@ export class TutorialPanel {
     const startY = this.contentAreaY + 6;
     const textX = this.panelX + 24;
 
+    // Render text lines
     for (let i = 0; i < section.lines.length; i++) {
       const line = section.lines[i];
+      if (!line) continue; // skip empty lines (used as illustration spacers)
       const isHeader = line.startsWith('---') && line.endsWith('---');
 
       const txt = this.scene.add.text(textX, startY + i * lineH, line, {
@@ -378,6 +450,13 @@ export class TutorialPanel {
         fontStyle: isHeader ? 'bold' : 'normal',
       });
       contentContainer.add(txt);
+    }
+
+    // Render illustrations
+    if (section.illustrations) {
+      for (const illus of section.illustrations) {
+        this.renderIllustration(contentContainer, illus, startY, textX);
+      }
     }
 
     const totalContentH = section.lines.length * lineH + 12;
@@ -406,6 +485,173 @@ export class TutorialPanel {
     }
   }
 
+  private renderIllustration(container: Phaser.GameObjects.Container, illus: TutorialIllustration, startY: number, _textX: number): void {
+    const y = startY + illus.y;
+    const centerX = this.panelX + this.panelW / 2;
+
+    switch (illus.type) {
+      case 'arrow_sequence': {
+        const data = illus.data as {
+          label: string;
+          isUpgrade?: boolean;
+          items: { sprite: string; caption: string; tint?: number; scale?: number; captionColor?: string }[];
+        };
+
+        // Label
+        const labelTxt = this.scene.add.text(this.panelX + 24, y, data.label, {
+          fontSize: '10px', color: '#aaaaaa', fontFamily: 'monospace',
+        });
+        container.add(labelTxt);
+
+        const count = data.items.length;
+        const spacing = Math.min(90, (this.panelW - 60) / count);
+        const totalW = (count - 1) * spacing;
+        const baseX = centerX - totalW / 2;
+
+        for (let i = 0; i < data.items.length; i++) {
+          const item = data.items[i];
+          const ix = baseX + i * spacing;
+          const iy = y + 22;
+
+          // Background card
+          const cardG = this.scene.add.graphics();
+          cardG.fillStyle(0x222244, 0.8);
+          cardG.fillRoundedRect(ix - 32, iy - 4, 64, 70, 4);
+          cardG.lineStyle(1, data.isUpgrade ? 0x6666aa : 0x444466, 0.6);
+          cardG.strokeRoundedRect(ix - 32, iy - 4, 64, 70, 4);
+          container.add(cardG);
+
+          // Sprite
+          const texKey = this.scene.textures.exists(item.sprite) ? item.sprite : 'tower_arrow';
+          const sprite = this.scene.add.sprite(ix, iy + 18, texKey)
+            .setScale(item.scale ?? 1);
+          if (item.tint) sprite.setTint(item.tint);
+          container.add(sprite);
+
+          // Caption
+          const capColor = item.captionColor ?? '#cccccc';
+          const cap = this.scene.add.text(ix, iy + 42, item.caption, {
+            fontSize: '8px', color: capColor, fontFamily: 'monospace',
+            align: 'center',
+          }).setOrigin(0.5, 0);
+          container.add(cap);
+
+          // Arrow between items
+          if (i < data.items.length - 1) {
+            const arrowX = ix + spacing / 2;
+            const arrowColor = data.isUpgrade ? '#ffcc00' : '#888888';
+            const arrowTxt = this.scene.add.text(arrowX, iy + 16, data.isUpgrade ? '→' : '·', {
+              fontSize: data.isUpgrade ? '18px' : '14px',
+              color: arrowColor, fontFamily: 'monospace',
+            }).setOrigin(0.5);
+            container.add(arrowTxt);
+          }
+        }
+        break;
+      }
+
+      case 'room_icons': {
+        const data = illus.data as {
+          rooms: { icon: string; color: number; name: string; desc: string }[];
+        };
+
+        const roomH = 46;
+        for (let i = 0; i < data.rooms.length; i++) {
+          const room = data.rooms[i];
+          const ry = y + i * roomH;
+          const rx = this.panelX + 24;
+          const rw = this.panelW - 48;
+
+          // Room card background
+          const cardG = this.scene.add.graphics();
+          cardG.fillStyle(room.color, 0.6);
+          cardG.fillRoundedRect(rx, ry, rw, roomH - 4, 6);
+          cardG.lineStyle(1, 0x555577, 0.5);
+          cardG.strokeRoundedRect(rx, ry, rw, roomH - 4, 6);
+          container.add(cardG);
+
+          // Icon (large emoji)
+          const iconTxt = this.scene.add.text(rx + 22, ry + (roomH - 4) / 2, room.icon, {
+            fontSize: '22px', fontFamily: 'monospace',
+          }).setOrigin(0.5);
+          container.add(iconTxt);
+
+          // Room name
+          const nameTxt = this.scene.add.text(rx + 48, ry + 6, room.name, {
+            fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
+            fontStyle: 'bold',
+          });
+          container.add(nameTxt);
+
+          // Description
+          const descTxt = this.scene.add.text(rx + 48, ry + 20, room.desc, {
+            fontSize: '9px', color: '#bbbbbb', fontFamily: 'monospace',
+          });
+          container.add(descTxt);
+
+          // Decorative room shape on right side
+          const shapeG = this.scene.add.graphics();
+          const shapeX = rx + rw - 35;
+          const shapeY = ry + (roomH - 4) / 2;
+          shapeG.lineStyle(1.5, 0xffffff, 0.2);
+          // Draw a small room icon (square with door)
+          shapeG.strokeRect(shapeX - 10, shapeY - 10, 20, 20);
+          shapeG.fillStyle(0x000000, 0.3);
+          shapeG.fillRect(shapeX - 2, shapeY + 4, 4, 6);
+          container.add(shapeG);
+        }
+        break;
+      }
+
+      case 'range_demo': {
+        const data = illus.data as {
+          items: { sprite: string; label: string; target: string; color: number }[];
+        };
+
+        const count = data.items.length;
+        const spacing = Math.min(100, (this.panelW - 60) / count);
+        const totalW = (count - 1) * spacing;
+        const baseX = centerX - totalW / 2;
+
+        for (let i = 0; i < data.items.length; i++) {
+          const item = data.items[i];
+          const ix = baseX + i * spacing;
+          const iy = y + 10;
+
+          // Range circle (small)
+          const rangeG = this.scene.add.graphics();
+          rangeG.lineStyle(1.5, item.color, 0.5);
+          rangeG.fillStyle(item.color, 0.08);
+          rangeG.fillCircle(ix, iy + 16, 28);
+          rangeG.strokeCircle(ix, iy + 16, 28);
+          container.add(rangeG);
+
+          // Tower sprite
+          const texKey = this.scene.textures.exists(item.sprite) ? item.sprite : 'tower_arrow';
+          const sprite = this.scene.add.sprite(ix, iy + 16, texKey).setScale(0.9);
+          container.add(sprite);
+
+          // Label
+          const lbl = this.scene.add.text(ix, iy + 42, item.label, {
+            fontSize: '8px', color: '#cccccc', fontFamily: 'monospace',
+          }).setOrigin(0.5, 0);
+          container.add(lbl);
+
+          // Target type indicator
+          const targetLabel = item.target === 'ground' ? '🦶 Tierra' :
+                              item.target === 'air' ? '🦅 Aéreo' : '⚡ Ambos';
+          const targetColor = item.target === 'ground' ? '#88cc44' :
+                              item.target === 'air' ? '#44ccff' : '#cc88ff';
+          const targetTxt = this.scene.add.text(ix, iy + 52, targetLabel, {
+            fontSize: '7px', color: targetColor, fontFamily: 'monospace',
+          }).setOrigin(0.5, 0);
+          container.add(targetTxt);
+        }
+        break;
+      }
+    }
+  }
+
   private updateContentScroll(): void {
     for (const cont of this.sectionContents) {
       cont.setY(-this.scrollOffset);
@@ -413,10 +659,7 @@ export class TutorialPanel {
   }
 
   private closeSection(index: number): void {
-    // Reset arrow for the closed section - arrows are part of main container
-    // They get recreated anyway, just clear content
     this.clearContent();
-    // Reset title color
     if (this.sectionTitles[index]) {
       this.sectionTitles[index].setColor('#cccccc');
     }
