@@ -279,6 +279,21 @@ export class TroopSidePanel {
     this.container.setVisible(true);
   }
 
+  /** Clear all troop cells (e.g. on level change) */
+  reset(): void {
+    this.clearHighlight();
+    for (const cell of this.cellContainers.values()) {
+      cell.destroy();
+    }
+    this.cellContainers.clear();
+    // Remove empty text if present
+    const emptyText = this.container.getData('emptyText') as Phaser.GameObjects.Text | undefined;
+    if (emptyText) {
+      emptyText.destroy();
+      this.container.setData('emptyText', undefined);
+    }
+  }
+
   destroy(): void {
     this.clearHighlight();
     this.container.destroy();

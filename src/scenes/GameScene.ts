@@ -37,10 +37,10 @@ import itemsData from '../data/items.json';
 type GameState = 'preparing' | 'playing' | 'between_waves' | 'dungeon' | 'game_over' | 'victory';
 
 const AVAILABLE_TOWERS: TowerData[] = [
-  { id: 'tower_arrow', name: 'Torre de Flechas', targetType: TargetType.GROUND, damage: 15, attackSpeed: 1.2, range: 4, cost: 50, projectileSpeed: 20, aoeRadius: 0, description: 'Daño rápido a terrestres' },
-  { id: 'tower_cannon', name: 'Cañón', targetType: TargetType.GROUND, damage: 40, attackSpeed: 0.5, range: 3, cost: 80, projectileSpeed: 14, aoeRadius: 1.5, description: 'Daño AoE a terrestres' },
-  { id: 'tower_antiair', name: 'Balista Aérea', targetType: TargetType.AERIAL, damage: 25, attackSpeed: 1.0, range: 5, cost: 70, projectileSpeed: 24, aoeRadius: 0, description: 'Solo ataca aéreos' },
-  { id: 'tower_magic', name: 'Torre Arcana', targetType: TargetType.BOTH, damage: 20, attackSpeed: 0.8, range: 4, cost: 100, projectileSpeed: 16, aoeRadius: 1, description: 'Ataca todo con penalización' },
+  { id: 'tower_arrow', name: 'Torre de Flechas', targetType: TargetType.GROUND, damage: 25, attackSpeed: 1.4, range: 4, cost: 50, projectileSpeed: 22, aoeRadius: 0, description: 'Daño rápido a terrestres' },
+  { id: 'tower_cannon', name: 'Cañón', targetType: TargetType.GROUND, damage: 60, attackSpeed: 0.5, range: 3, cost: 80, projectileSpeed: 14, aoeRadius: 1.5, description: 'Daño AoE a terrestres' },
+  { id: 'tower_antiair', name: 'Balista Aérea', targetType: TargetType.AERIAL, damage: 35, attackSpeed: 1.0, range: 5, cost: 70, projectileSpeed: 24, aoeRadius: 0, description: 'Solo ataca aéreos' },
+  { id: 'tower_magic', name: 'Torre Arcana', targetType: TargetType.BOTH, damage: 30, attackSpeed: 0.9, range: 4, cost: 100, projectileSpeed: 16, aoeRadius: 1, description: 'Ataca todo' },
 ];
 
 export class GameScene extends Phaser.Scene {
@@ -82,6 +82,7 @@ export class GameScene extends Phaser.Scene {
   private selectedTowerIndex = -1;
   private towerSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private projectileSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
+  private inputZones: Phaser.GameObjects.Zone[] = [];
 
   // UI
   private hud!: HUD;
@@ -306,6 +307,9 @@ export class GameScene extends Phaser.Scene {
     for (const sprite of this.tileSprites) sprite.destroy();
     this.tileSprites = [];
 
+    // Reset troop side panel for the new level
+    if (this.troopSidePanel) this.troopSidePanel.reset();
+
     const levelData = levelsData[levelIndex] as LevelData;
     this.gridMap = new GridMap(levelData);
     this.defenseSystem = new DefenseSystem(this.gridMap);
@@ -456,6 +460,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupInput(): void {
+    // Destroy old input zones
+    for (const z of this.inputZones) z.destroy();
+    this.inputZones = [];
+
     // Make all buildable tiles interactive for tower placement
     for (let y = 0; y < this.gridMap.rows; y++) {
       for (let x = 0; x < this.gridMap.cols; x++) {
@@ -1579,7 +1587,7 @@ export class GameScene extends Phaser.Scene {
     '#44dd66', // Jungla Venenosa — verde tropical
   ];
 
-  private restartAtLevel(levelIndex: number): void {
+  private restartAtLevel(levelIndex: number, resetHP: boolean = true): void {
     // Reset dungeon when changing level
     if (levelIndex !== this.currentLevelIndex) {
       this.currentDungeon = null;
@@ -1604,15 +1612,20 @@ export class GameScene extends Phaser.Scene {
 
     this.currentLevelIndex = levelIndex;
     this.gold = 1000;
-    this.wallHP = this.wallMaxHP;
+    if (resetHP) this.wallHP = this.wallMaxHP;
     this.gamePaused = false;
     this.inSubmenu = false;
+    // Reset speed and autoplay
+    this.speedMultiplier = 1;
+    this.autoplay = false;
     this.cleanAllState();
     this.loadLevel(this.currentLevelIndex);
     this.setupInput();
     this.showScenario();
     this.showGameUI();
     this.updateResources();
+    this.updateSpeedBtnVisual();
+    this.updateAutoplayBtn();
     eventBus.emit('wall:damaged', this.wallHP, this.wallMaxHP);
     this.enterPreparationPhase(0);
   }
@@ -1685,7 +1698,7 @@ export class GameScene extends Phaser.Scene {
       this.addHoverEffect(nextBtn, '#8fbc8f');
       nextBtn.on('pointerdown', () => {
         this.playSfx('sfx_click');
-        this.restartAtLevel(this.currentLevelIndex);
+        this.restartAtLevel(this.currentLevelIndex, false);
       });
     } else {
       // All levels completed
@@ -1776,7 +1789,6 @@ export class GameScene extends Phaser.Scene {
     this.activeEnemies = [];
     this.spawnQueue = [];
     this.currentWaveIndex = 0;
-    this.wallHP = this.wallMaxHP;
     this.towerTypeLevels.clear();
   }
 

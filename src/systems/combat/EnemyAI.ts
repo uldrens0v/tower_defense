@@ -1,5 +1,5 @@
 import type { EnemyInstance } from '../../entities/enemies/EnemyData';
-import { TILE_SIZE, MAP_OFFSET_Y } from '../../core/Constants';
+import { TILE_SIZE, MAP_OFFSET_X, MAP_OFFSET_Y } from '../../core/Constants';
 import { eventBus } from '../../core/EventBus';
 
 const SEPARATION_DIST = TILE_SIZE * 0.8;
@@ -27,7 +27,7 @@ export class EnemyAI {
     }
 
     const target = enemy.path[enemy.pathIndex];
-    const targetWorldX = target.x * TILE_SIZE + TILE_SIZE / 2;
+    const targetWorldX = target.x * TILE_SIZE + TILE_SIZE / 2 + MAP_OFFSET_X;
     const targetWorldY = target.y * TILE_SIZE + TILE_SIZE / 2 + MAP_OFFSET_Y;
 
     const dx = targetWorldX - enemy.worldX;

@@ -319,7 +319,8 @@ export class TroopSystem {
       }
     }
 
-    const finalDamage = Math.max(1, Math.floor(damage) - target.data.defense);
+    const reduction = target.data.defense / (target.data.defense + 50);
+    const finalDamage = Math.max(1, Math.round(Math.floor(damage) * (1 - reduction)));
 
     // Charge ultimate with damage dealt
     troop.ultimateCharge += finalDamage;
@@ -452,8 +453,10 @@ export class TroopSystem {
       const dx = enemy.worldX - x;
       const dy = enemy.worldY - y;
       if (Math.sqrt(dx * dx + dy * dy) <= radius) {
-        enemy.currentHP -= damage;
-        eventBus.emit('enemy:damaged', enemy, damage);
+        const reduction = enemy.data.defense / (enemy.data.defense + 50);
+        const actualDmg = Math.max(1, Math.round(damage * (1 - reduction)));
+        enemy.currentHP -= actualDmg;
+        eventBus.emit('enemy:damaged', enemy, actualDmg);
         if (enemy.currentHP <= 0) {
           enemy.currentHP = 0;
           eventBus.emit('enemy:killed', enemy);

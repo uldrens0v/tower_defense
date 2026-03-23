@@ -162,7 +162,9 @@ export class DefenseSystem {
   }
 
   private damageEnemy(enemy: EnemyInstance, damage: number): void {
-    const actualDamage = Math.max(1, damage - enemy.data.defense);
+    // Percentage reduction: defense 10 → 17% reduction, defense 20 → 29%, defense 30 → 38%
+    const reduction = enemy.data.defense / (enemy.data.defense + 50);
+    const actualDamage = Math.max(1, Math.round(damage * (1 - reduction)));
     enemy.currentHP -= actualDamage;
     eventBus.emit('enemy:damaged', enemy, actualDamage);
 
