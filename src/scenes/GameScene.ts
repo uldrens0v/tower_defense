@@ -487,10 +487,19 @@ export class GameScene extends Phaser.Scene {
           });
 
           zone.on('pointerdown', (_pointer: Phaser.Input.Pointer) => {
-            // Right-click: sell tower or cancel selection
+            // Right-click: sell tower/troop or cancel selection
             if (_pointer.rightButtonDown()) {
               if (this.towerSprites.has(`${x},${y}`)) {
                 this.sellTowerAt(x, y);
+              } else if (this.troopSystem) {
+                const troop = this.troopSystem.getTroops().find(t => t.homeGridX === x && t.homeGridY === y);
+                if (troop) {
+                  this.troopSystem.removeTroop(troop.id);
+                  const sprite = this.troopSprites.get(troop.id);
+                  if (sprite) { sprite.destroy(); this.troopSprites.delete(troop.id); }
+                  this.clearHoverRange();
+                  SoundFX.towerSell();
+                }
               }
               return;
             }
@@ -1937,7 +1946,7 @@ export class GameScene extends Phaser.Scene {
     const wave = waves[waveIndex];
 
     // Update HUD with wave enemy data
-    this.hud.setTotalWaves(waves.length);
+    this.hud.setTotalWaves(waves.length, waveIndex + 1);
     this.hud.setWaveEnemies(this.buildWaveEnemyCounts(wave.enemies));
 
     // Start wave button — top bar, between round info and wall HP
@@ -2675,12 +2684,14 @@ export class GameScene extends Phaser.Scene {
   private showHoverRange(gx: number, gy: number): void {
     this.clearHoverRange();
 
+    if (!this.hoverRangeGraphics) {
+      this.hoverRangeGraphics = this.add.graphics().setDepth(4);
+    }
+    this.hoverRangeGraphics.setVisible(true);
+
     // Check for tower at this position
     const tower = this.defenseSystem.getTowers().find(t => t.gridX === gx && t.gridY === gy);
     if (tower) {
-      if (!this.hoverRangeGraphics) {
-        this.hoverRangeGraphics = this.add.graphics().setDepth(4);
-      }
       const rangePx = tower.data.range * TILE_SIZE;
       this.hoverRangeGraphics.lineStyle(2, 0x44aaff, 0.6);
       this.hoverRangeGraphics.fillStyle(0x44aaff, 0.1);
@@ -2693,9 +2704,6 @@ export class GameScene extends Phaser.Scene {
     if (this.troopSystem) {
       const troop = this.troopSystem.getTroops().find(t => t.homeGridX === gx && t.homeGridY === gy);
       if (troop) {
-        if (!this.hoverRangeGraphics) {
-          this.hoverRangeGraphics = this.add.graphics().setDepth(4);
-        }
         const stats = troop.character.getFinalStats();
         const rangePx = stats.range * TILE_SIZE;
         this.hoverRangeGraphics.lineStyle(2, 0x44ff44, 0.6);

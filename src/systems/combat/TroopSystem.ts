@@ -818,6 +818,10 @@ export class TroopSystem {
     }
   }
 
+  removeTroop(characterId: string): boolean {
+    return this.troops.delete(characterId);
+  }
+
   clearAll(): void {
     this.troops.clear();
     this.projectiles = [];

@@ -120,10 +120,10 @@ export class HUD {
     });
   }
 
-  setTotalWaves(total: number): void {
+  setTotalWaves(total: number, upcomingWave: number = 1): void {
     this.totalWaves = total;
-    this.currentWave = 0;
-    this.waveText.setText(`Ronda 0/${this.totalWaves}`);
+    this.currentWave = upcomingWave;
+    this.waveText.setText(`Ronda ${upcomingWave}/${this.totalWaves}`);
   }
 
   setWaveEnemies(enemies: WaveEnemyCount[]): void {
