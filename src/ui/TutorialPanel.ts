@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../core/Constants';
+import { GAME_WIDTH, GAME_HEIGHT, IS_MOBILE } from '../core/Constants';
 
 interface TutorialSection {
   title: string;
@@ -307,8 +307,8 @@ export class TutorialPanel {
     this.container.add(closeBtn);
 
     // "Empezar" button at bottom
-    const startBtnW = 200;
-    const startBtnH = 34;
+    const startBtnW = IS_MOBILE ? 280 : 200;
+    const startBtnH = IS_MOBILE ? 50 : 34;
     const startBtnX = GAME_WIDTH / 2 - startBtnW / 2;
     const startBtnY = this.panelY + this.panelH - startBtnH - 8;
 
@@ -319,10 +319,16 @@ export class TutorialPanel {
     startBg.strokeRect(startBtnX, startBtnY, startBtnW, startBtnH);
     this.container.add(startBg);
 
-    const startText = this.scene.add.text(GAME_WIDTH / 2, startBtnY + startBtnH / 2, 'EMPEZAR', {
-      fontSize: '16px', color: '#88ff88', fontFamily: 'monospace', fontStyle: 'bold',
-    }).setOrigin(0.5).setInteractive();
-    startText.on('pointerover', () => {
+    const startFontSize = IS_MOBILE ? '22px' : '16px';
+    const startText = this.scene.add.text(GAME_WIDTH / 2, startBtnY + startBtnH / 2, 'ENTENDIDO', {
+      fontSize: startFontSize, color: '#88ff88', fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    this.container.add(startText);
+
+    // Use invisible rectangle as hit area so the full button area is tappable
+    const startHit = this.scene.add.rectangle(GAME_WIDTH / 2, startBtnY + startBtnH / 2, startBtnW, startBtnH)
+      .setInteractive().setAlpha(0.01);
+    startHit.on('pointerover', () => {
       startText.setColor('#ffffff');
       startBg.clear();
       startBg.fillStyle(0x447744, 0.95);
@@ -330,7 +336,7 @@ export class TutorialPanel {
       startBg.lineStyle(2, 0x88ff88);
       startBg.strokeRect(startBtnX, startBtnY, startBtnW, startBtnH);
     });
-    startText.on('pointerout', () => {
+    startHit.on('pointerout', () => {
       startText.setColor('#88ff88');
       startBg.clear();
       startBg.fillStyle(0x335533, 0.95);
@@ -338,8 +344,8 @@ export class TutorialPanel {
       startBg.lineStyle(2, 0x44aa44);
       startBg.strokeRect(startBtnX, startBtnY, startBtnW, startBtnH);
     });
-    startText.on('pointerdown', () => this.close());
-    this.container.add(startText);
+    startHit.on('pointerdown', () => this.close());
+    this.container.add(startHit);
 
     // Scroll with mouse wheel
     this.scene.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gos: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT } from '../core/Constants';
+import { GAME_WIDTH, MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT, IS_MOBILE } from '../core/Constants';
 import { eventBus } from '../core/EventBus';
 
 export interface WaveEnemyCount {
@@ -8,6 +8,14 @@ export interface WaveEnemyCount {
   total: number;
   alive: number;
 }
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+// Mobile HUD (40px tall):
+//  [Ronda / Timer]   |   [🏰 HP]   |   [💰 / 💎]
+//   x=12                  x=CX          x=GW-95
+//
+// Desktop HUD (40px tall): unchanged layout
+// ─────────────────────────────────────────────────────────────────────────────
 
 export class HUD {
   private scene: Phaser.Scene;
@@ -37,29 +45,54 @@ export class HUD {
     this.scene = scene;
     this.container = scene.add.container(0, 0).setDepth(100);
 
+    const BAR_H = IS_MOBILE ? 40 : 40;
+
     // Top bar background
     const topBar = scene.add.graphics();
-    topBar.fillStyle(0x000000, 0.7);
-    topBar.fillRect(0, 0, GAME_WIDTH, 40);
+    topBar.fillStyle(0x000000, 0.75);
+    topBar.fillRect(0, 0, GAME_WIDTH, BAR_H);
     this.container.add(topBar);
 
-    // Wall HP bar (positioned between start button and resources)
+    // ── Positions ────────────────────────────────────────────────────────────
+    // On mobile: wave on far-left, HP centred, resources on far-right.
+    // The three groups never overlap: wave ends ~200px, HP is 340-560px, gold starts at GW-95=805px.
+    const hpCenterX   = IS_MOBILE ? GAME_WIDTH / 2       : MAP_OFFSET_X + 720;
+    const waveX       = IS_MOBILE ? 12                   : MAP_OFFSET_X + 10;
+    const waveY       = IS_MOBILE ? 5                    : 8;
+    const timerY      = IS_MOBILE ? 23                   : 26;
+    const resX        = IS_MOBILE ? GAME_WIDTH - 95      : GAME_WIDTH - 150;
+    const resY1       = IS_MOBILE ? 5                    : 8;
+    const resY2       = IS_MOBILE ? 23                   : 24;
+    const hpTextY     = IS_MOBILE ? 4                    : 8;
+    const hpBarY      = IS_MOBILE ? 25                   : 24;
+    const hpBarW      = IS_MOBILE ? 120                  : 140;
+    const hpBarH      = IS_MOBILE ? 7                    : 8;
+    const fontSize    = IS_MOBILE ? '14px'               : '12px';
+    const waveFSize   = IS_MOBILE ? '15px'               : '14px';
+    const resFSize    = IS_MOBILE ? '14px'               : '13px';
+
+    // ── Wall HP ───────────────────────────────────────────────────────────────
     this.wallHPBar = scene.add.graphics();
     this.container.add(this.wallHPBar);
 
-    this.wallHPText = scene.add.text(MAP_OFFSET_X + 720, 8, '🏰 100/100', {
-      fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
+    this.wallHPText = scene.add.text(hpCenterX, hpTextY, '🏰 100/100', {
+      fontSize, color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     this.container.add(this.wallHPText);
 
-    // Wave info (left side, replaces old "Ola: N")
-    this.waveText = scene.add.text(MAP_OFFSET_X + 10, 8, 'Ronda 0', {
-      fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace',
-      backgroundColor: '#00000000', padding: { x: 4, y: 2 },
+    // Store bar geometry for drawWallHP()
+    this.container.setData('hpCenterX', hpCenterX);
+    this.container.setData('hpBarY',    hpBarY);
+    this.container.setData('hpBarW',    hpBarW);
+    this.container.setData('hpBarH',    hpBarH);
+
+    // ── Wave info ─────────────────────────────────────────────────────────────
+    this.waveText = scene.add.text(waveX, waveY, 'Ronda 0', {
+      fontSize: waveFSize, color: '#ffcc00', fontFamily: 'monospace',
+      padding: { x: 2, y: 1 },
     }).setInteractive();
     this.container.add(this.waveText);
 
-    // Hover for wave tooltip
     this.waveText.on('pointerover', () => {
       this.waveText.setStroke('#ffff44', 2);
       this.showWaveTooltip();
@@ -69,23 +102,23 @@ export class HUD {
       this.hideWaveTooltip();
     });
 
-    this.timerText = scene.add.text(MAP_OFFSET_X + 10, 26, '', {
-      fontSize: '14px', color: '#aaaaaa', fontFamily: 'monospace',
+    this.timerText = scene.add.text(waveX, timerY, '', {
+      fontSize: IS_MOBILE ? '12px' : '14px', color: '#aaaaaa', fontFamily: 'monospace',
     });
     this.container.add(this.timerText);
 
-    // Resources
-    this.goldText = scene.add.text(GAME_WIDTH - 150, 8, '💰 0', {
-      fontSize: '13px', color: '#ffcc00', fontFamily: 'monospace',
+    // ── Resources ─────────────────────────────────────────────────────────────
+    this.goldText = scene.add.text(resX, resY1, '💰 0', {
+      fontSize: resFSize, color: '#ffcc00', fontFamily: 'monospace',
     });
     this.container.add(this.goldText);
 
-    this.crystalText = scene.add.text(GAME_WIDTH - 150, 24, '💎 0', {
-      fontSize: '13px', color: '#88ddff', fontFamily: 'monospace',
+    this.crystalText = scene.add.text(resX, resY2, '💎 0', {
+      fontSize: resFSize, color: '#88ddff', fontFamily: 'monospace',
     });
     this.container.add(this.crystalText);
 
-    // Character portraits container (bottom bar area, below the map)
+    // Character portraits (desktop bottom bar)
     this.characterPortraits = scene.add.container(10, MAP_OFFSET_Y + MAP_HEIGHT + 40).setDepth(100);
 
     this.drawWallHP();
@@ -98,7 +131,6 @@ export class HUD {
       this.wallHP = _hp as number;
       this.wallMaxHP = _maxHp as number;
       this.drawWallHP();
-      // Flash red when damaged
       if (this.wallHP < prevHP) {
         this.wallHPText.setColor('#ff4444');
         this.scene.time.delayedCall(300, () => {
@@ -128,7 +160,6 @@ export class HUD {
 
   setWaveEnemies(enemies: WaveEnemyCount[]): void {
     this.waveEnemyCounts = enemies;
-    // Update tooltip if visible
     if (this.waveTooltip) {
       this.hideWaveTooltip();
       this.showWaveTooltip();
@@ -139,7 +170,6 @@ export class HUD {
     const entry = this.waveEnemyCounts.find(e => e.enemyId === enemyId);
     if (entry && entry.alive > 0) {
       entry.alive--;
-      // Update tooltip if visible
       if (this.waveTooltip) {
         this.hideWaveTooltip();
         this.showWaveTooltip();
@@ -155,8 +185,8 @@ export class HUD {
 
     this.waveTooltip = this.scene.add.container(0, 0).setDepth(210);
 
-    const tooltipX = MAP_OFFSET_X + 10;
-    const tooltipY = 42;
+    const tooltipX = IS_MOBILE ? 4 : MAP_OFFSET_X + 10;
+    const tooltipY = IS_MOBILE ? 40 : 42;
     const rowH = 28;
     const tooltipW = 180;
     const padding = 6;
@@ -164,7 +194,6 @@ export class HUD {
     const rows = alive.length > 0 ? alive : [{ enemyId: '', name: 'Sin enemigos', total: 0, alive: 0 }];
     const tooltipH = rows.length * rowH + padding * 2;
 
-    // Background
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x111122, 0.95);
     bg.fillRect(tooltipX, tooltipY, tooltipW, tooltipH);
@@ -174,18 +203,13 @@ export class HUD {
 
     rows.forEach((entry, i) => {
       const ry = tooltipY + padding + i * rowH;
-
       if (entry.enemyId) {
-        // Enemy sprite
         const spriteKey = this.scene.textures.exists(entry.enemyId) ? entry.enemyId : 'character-placeholder';
         const sprite = this.scene.add.sprite(tooltipX + 16, ry + rowH / 2, spriteKey)
           .setScale(0.6).setDepth(211);
-        if (this.scene.anims.exists(entry.enemyId + '_walk')) {
-          sprite.play(entry.enemyId + '_walk');
-        }
+        if (this.scene.anims.exists(entry.enemyId + '_walk')) sprite.play(entry.enemyId + '_walk');
         this.waveTooltip!.add(sprite);
 
-        // Name + count
         const countColor = entry.alive <= 0 ? '#444444' : '#ffffff';
         const txt = this.scene.add.text(tooltipX + 34, ry + rowH / 2, `${entry.name} x${entry.alive}`, {
           fontSize: '13px', color: countColor, fontFamily: 'monospace',
@@ -213,7 +237,6 @@ export class HUD {
       fontSize: '16px', color: '#44ff44', fontFamily: 'monospace',
       backgroundColor: '#333333', padding: { x: 8, y: 4 },
     }).setInteractive().setDepth(100);
-
     this.formationBtn.on('pointerdown', onPress);
   }
 
@@ -226,16 +249,11 @@ export class HUD {
 
   updateTimer(seconds: number): void {
     this.waveTimer = seconds;
-    if (seconds > 0) {
-      this.timerText.setText(`Siguiente ola: ${Math.ceil(seconds)}s`);
-    } else {
-      this.timerText.setText('');
-    }
+    this.timerText.setText(seconds > 0 ? `Sig: ${Math.ceil(seconds)}s` : '');
   }
 
   updateCharacterPortraits(characters: { name: string; hp: number; maxHP: number; rarity: string }[]): void {
     this.characterPortraits.removeAll(true);
-
     characters.forEach((char, i) => {
       const x = i * 70;
       const bg = this.scene.add.graphics();
@@ -250,25 +268,25 @@ export class HUD {
       const nameText = this.scene.add.text(x + 30, -25, char.name.slice(0, 6), {
         fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
       }).setOrigin(0.5, 0);
-
       this.characterPortraits.add([bg, hpBar, nameText]);
     });
   }
 
   private drawWallHP(): void {
     this.wallHPBar.clear();
-    const barWidth = 140;
-    const barX = MAP_OFFSET_X + 720 - barWidth / 2;
-    const pct = this.wallHP / this.wallMaxHP;
+    const cx   = (this.container.getData('hpCenterX') as number) ?? GAME_WIDTH / 2;
+    const barW = (this.container.getData('hpBarW')    as number) ?? 140;
+    const barY = (this.container.getData('hpBarY')    as number) ?? 24;
+    const barH = (this.container.getData('hpBarH')    as number) ?? 8;
+    const barX = cx - barW / 2;
+    const pct  = this.wallHP / this.wallMaxHP;
 
-    // Background
     this.wallHPBar.fillStyle(0x333333);
-    this.wallHPBar.fillRect(barX, 24, barWidth, 8);
+    this.wallHPBar.fillRect(barX, barY, barW, barH);
 
-    // HP fill
     const color = pct > 0.5 ? 0x44cc44 : pct > 0.2 ? 0xffaa00 : 0xff2222;
     this.wallHPBar.fillStyle(color);
-    this.wallHPBar.fillRect(barX, 24, barWidth * pct, 8);
+    this.wallHPBar.fillRect(barX, barY, barW * pct, barH);
 
     this.wallHPText.setText(`🏰 ${this.wallHP}/${this.wallMaxHP}`);
   }

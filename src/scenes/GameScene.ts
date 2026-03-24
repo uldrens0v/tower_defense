@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { eventBus } from '../core/EventBus';
-import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT, BOTTOM_BAR_Y } from '../core/Constants';
+import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT, BOTTOM_BAR_Y, IS_MOBILE } from '../core/Constants';
 import { GridMap, TileType } from '../core/GridMap';
 import type { LevelData } from '../core/GridMap';
 import { SaveSystem } from '../core/SaveSystem';
@@ -104,6 +104,10 @@ export class GameScene extends Phaser.Scene {
   private rangeGraphics: Phaser.GameObjects.Graphics | null = null;
   private rangeToggleBtn: Phaser.GameObjects.Text | null = null;
 
+  // Mobile: delete/sell mode (replaces right-click)
+  private deleteMode = false;
+  private deleteModeText: Phaser.GameObjects.Text | null = null;
+
   // Game over UI
   private gameOverContainer: Phaser.GameObjects.Container | null = null;
 
@@ -206,6 +210,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     try {
+      if (IS_MOBILE) this.setupOrientationWarning();
       this.initSystems();
       this.drawExteriorBars();
       this.loadLevel(this.currentLevelIndex);
@@ -331,7 +336,9 @@ export class GameScene extends Phaser.Scene {
         }
 
         const world = this.gridMap.gridToWorld(x, y);
-        const sprite = this.add.sprite(world.x, world.y, textureKey).setDepth(0);
+        const sprite = this.add.sprite(world.x, world.y, textureKey)
+          .setDepth(0)
+          .setDisplaySize(TILE_SIZE, TILE_SIZE);
         this.tileSprites.push(sprite);
       }
     }
@@ -339,7 +346,8 @@ export class GameScene extends Phaser.Scene {
     // Render wall sprite at exit point
     const exitPt = this.gridMap.getExitPoint();
     const exitWorld = this.gridMap.gridToWorld(exitPt.x, exitPt.y);
-    const wallSprite = this.add.sprite(exitWorld.x, exitWorld.y, 'wall_gate').setDepth(2);
+    const wallSprite = this.add.sprite(exitWorld.x, exitWorld.y, 'wall_gate')
+      .setDepth(2).setDisplaySize(TILE_SIZE, TILE_SIZE);
     this.tileSprites.push(wallSprite);
 
     // Show level name
@@ -348,6 +356,39 @@ export class GameScene extends Phaser.Scene {
 
   private isTouch(): boolean {
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  }
+
+  // ── Mobile orientation guard ─────────────────────────────────────────────────
+  private orientationOverlay: Phaser.GameObjects.Container | null = null;
+
+  private setupOrientationWarning(): void {
+    const checkOrientation = (): void => {
+      const isPortrait = window.innerHeight > window.innerWidth;
+      if (isPortrait) {
+        if (!this.orientationOverlay) {
+          const ov = this.add.container(0, 0).setDepth(9999);
+          const bg = this.add.graphics();
+          bg.fillStyle(0x000000, 0.92);
+          bg.fillRect(0, 0, this.scale.width, this.scale.height);
+          ov.add(bg);
+          const txt = this.add.text(this.scale.width / 2, this.scale.height / 2,
+            '↻ Gira el dispositivo\npara jugar en horizontal', {
+              fontSize: '18px', color: '#ffffff', fontFamily: 'monospace',
+              align: 'center',
+            }).setOrigin(0.5);
+          ov.add(txt);
+          this.orientationOverlay = ov;
+        }
+      } else {
+        if (this.orientationOverlay) {
+          this.orientationOverlay.destroy();
+          this.orientationOverlay = null;
+        }
+      }
+    };
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
   }
 
   /** Draw dark bars at top and bottom, outside the map area */
@@ -380,12 +421,21 @@ export class GameScene extends Phaser.Scene {
 
     const touch = this.isTouch();
 
-    // Menu button (☰) - replaces ESC key
-    const menuBtnSize = touch ? '22px' : '18px';
-    this.menuBtn = this.add.text(GAME_WIDTH - 30, 14, '☰', {
-      fontSize: menuBtnSize, color: '#aaaaaa', fontFamily: 'monospace',
-      backgroundColor: '#222233', padding: { x: 8, y: 4 },
-    }).setOrigin(0.5, 0).setDepth(250).setInteractive();
+    // Menu button (☰) — top-right on desktop, bottom-left slot on mobile (bottom bar)
+    const menuBtnSize = IS_MOBILE ? '18px' : (touch ? '22px' : '18px');
+    const menuBtnX    = IS_MOBILE ? BOTTOM_BAR_Y : GAME_WIDTH - 30; // repositioned below
+    const menuBtnY    = IS_MOBILE ? 4             : 14;
+    this.menuBtn = this.add.text(IS_MOBILE ? -999 : GAME_WIDTH - 30, menuBtnY, '☰', {
+      fontSize: menuBtnSize, color: '#cccccc', fontFamily: 'monospace',
+      backgroundColor: IS_MOBILE ? '#334' : '#222233',
+      padding: IS_MOBILE ? { x: 10, y: 6 } : { x: 8, y: 4 },
+    }).setOrigin(IS_MOBILE ? 0.5 : 0.5, 0).setDepth(250).setInteractive();
+    // On mobile, place in first slot of bottom bar (see createMobileMenuBtn below)
+    if (IS_MOBILE) {
+      this.menuBtn.setPosition(48, BOTTOM_BAR_Y);
+      this.menuBtn.setOrigin(0.5, 0.5);
+    }
+    void menuBtnX; // suppress unused warning
     this.menuBtn.on('pointerdown', () => {
       if (this.tutorialActive || this.inSubmenu) return;
       this.playSfx('sfx_click');
@@ -401,12 +451,13 @@ export class GameScene extends Phaser.Scene {
     this.createTroopButton();
 
     // Tower selection buttons at bottom
-    const btnH = touch ? 36 : 30;
-    const btnW = touch ? 110 : 100;
-    const fontSize = touch ? '10px' : '9px';
-    const btnY = BOTTOM_BAR_Y; // stick to bottom edge
-    const btnSpacing = touch ? 118 : 120;
-    const btnStartX = (touch ? 190 : 200) + MAP_OFFSET_X;
+    const btnH      = IS_MOBILE ? 42  : (touch ? 36  : 30);
+    const btnW      = IS_MOBILE ? 60  : (touch ? 110 : 100);
+    const fontSize  = IS_MOBILE ? '13px' : (touch ? '10px' : '9px');
+    const btnY      = BOTTOM_BAR_Y;
+    // Mobile: slots 3-6 → centres at 240, 336, 432, 528 (96px spacing). Desktop: unchanged.
+    const btnSpacing = IS_MOBILE ? 96  : (touch ? 118 : 120);
+    const btnStartX  = IS_MOBILE ? 240 : ((touch ? 190 : 200) + MAP_OFFSET_X);
 
     AVAILABLE_TOWERS.forEach((tower, i) => {
       const btnX = btnStartX + i * btnSpacing;
@@ -456,6 +507,11 @@ export class GameScene extends Phaser.Scene {
 
     this.createRangeToggleButton();
     this.createSpeedButton();
+    if (IS_MOBILE) {
+      this.createDeleteModeButton();
+      // menuBtn lives in the bottom bar on mobile — add it to the managed list
+      if (this.menuBtn) this.bottomBarContainers.push(this.menuBtn as unknown as Phaser.GameObjects.Container);
+    }
     this.updateResources();
   }
 
@@ -473,22 +529,27 @@ export class GameScene extends Phaser.Scene {
             .setInteractive()
             .setDepth(1);
 
-          // Preview on hover
-          zone.on('pointerover', () => {
-            this.showPlacementPreview(world.x, world.y, this.towerSprites.has(`${x},${y}`));
-            // Show range on hover for placed units (when global ranges are off)
-            if (!this.showRanges) {
-              this.showHoverRange(x, y);
-            }
-          });
-          zone.on('pointerout', () => {
-            this.clearPlacementPreview();
-            this.clearHoverRange();
-          });
+          // Preview on hover (desktop only — mobile uses tap)
+          if (!IS_MOBILE) {
+            zone.on('pointerover', () => {
+              this.showPlacementPreview(world.x, world.y, this.towerSprites.has(`${x},${y}`));
+              if (!this.showRanges) this.showHoverRange(x, y);
+            });
+            zone.on('pointerout', () => {
+              this.clearPlacementPreview();
+              this.clearHoverRange();
+            });
+          }
 
           zone.on('pointerdown', (_pointer: Phaser.Input.Pointer) => {
-            // Right-click: sell tower/troop or cancel selection
-            if (_pointer.rightButtonDown()) {
+            // Mobile tap range preview (no hover on touch)
+            if (IS_MOBILE && !this.showRanges) {
+              this.showHoverRange(x, y);
+            }
+
+            // Delete/sell via right-click (desktop) or delete-mode button (mobile)
+            const wantDelete = _pointer.rightButtonDown() || (IS_MOBILE && this.deleteMode);
+            if (wantDelete) {
               if (this.towerSprites.has(`${x},${y}`)) {
                 this.sellTowerAt(x, y);
               } else if (this.troopSystem) {
@@ -887,7 +948,7 @@ export class GameScene extends Phaser.Scene {
   /** Show all game UI after returning from a submenu */
   private showGameUI(): void {
     this.hud.show();
-    this.troopSidePanel.show();
+    this.troopSidePanel.show(); // no-op on mobile (guard inside)
     if (this.startWaveBtn) this.startWaveBtn.setVisible(true);
     if (this.menuBtn) this.menuBtn.setVisible(true);
     if (this.autoplayBtn) this.autoplayBtn.setVisible(true);
@@ -1950,9 +2011,12 @@ export class GameScene extends Phaser.Scene {
     this.hud.setWaveEnemies(this.buildWaveEnemyCounts(wave.enemies));
 
     // Start wave button — top bar, between round info and wall HP
-    this.startWaveBtn = this.add.text(MAP_OFFSET_X + 512, 10, '⚔ INICIAR RONDA [ESPACIO]', {
-      fontSize: '13px', color: '#e0e0e0', fontFamily: 'monospace',
-      backgroundColor: '#2a5a2a', padding: { x: 12, y: 6 },
+    const swBtnLabel = IS_MOBILE ? '⚔ INICIAR' : '⚔ INICIAR RONDA [ESPACIO]';
+    const swBtnX = IS_MOBILE ? GAME_WIDTH / 2 : MAP_OFFSET_X + 512;
+    const swBtnY = IS_MOBILE ? MAP_OFFSET_Y + MAP_HEIGHT + 4 : 10;
+    this.startWaveBtn = this.add.text(swBtnX, swBtnY, swBtnLabel, {
+      fontSize: IS_MOBILE ? '16px' : '13px', color: '#e0e0e0', fontFamily: 'monospace',
+      backgroundColor: '#2a5a2a', padding: IS_MOBILE ? { x: 18, y: 10 } : { x: 12, y: 6 },
     }).setOrigin(0.5, 0).setDepth(250).setInteractive().setAlpha(0);
     // Fade in animation
     this.tweens.add({ targets: this.startWaveBtn, alpha: 1, duration: 300 });
@@ -1997,6 +2061,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateAutoplayBtn(): void {
+    if (IS_MOBILE) return; // autoplay hidden on mobile (no space in compact HUD)
     if (this.autoplayBtn) {
       this.autoplayBtn.destroy();
       this.autoplayBtn = null;
@@ -2027,9 +2092,10 @@ export class GameScene extends Phaser.Scene {
   // ---- Range Toggle ----
   private createRangeToggleButton(): void {
     const touch = this.isTouch();
-    const bw = touch ? 110 : 100;
-    const bh = touch ? 36 : 24;
-    const cx = (touch ? 910 : 900) + MAP_OFFSET_X;
+    const bw = IS_MOBILE ? 60 : (touch ? 110 : 100);
+    const bh = IS_MOBILE ? 42 : (touch ? 36 : 24);
+    // Mobile: slot 8 → centre 720. Desktop: unchanged.
+    const cx = IS_MOBILE ? 720 : ((touch ? 910 : 900) + MAP_OFFSET_X);
     const cy = BOTTOM_BAR_Y;
     const cont = this.add.container(cx, cy).setDepth(100);
 
@@ -2039,7 +2105,7 @@ export class GameScene extends Phaser.Scene {
     cont.add(bg);
 
     this.rangeToggleBtn = this.add.text(0, 0, '◎ Rangos: OFF', {
-      fontSize: touch ? '11px' : '11px', color: '#aaaaaa', fontFamily: 'monospace',
+      fontSize: IS_MOBILE ? '13px' : (touch ? '11px' : '11px'), color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5);
     cont.add(this.rangeToggleBtn);
 
@@ -2074,9 +2140,10 @@ export class GameScene extends Phaser.Scene {
 
   private createSpeedButton(): void {
     const touch = this.isTouch();
-    const bw = touch ? 90 : 80;
-    const bh = touch ? 36 : 24;
-    const cx = (touch ? 800 : 790) + MAP_OFFSET_X;
+    const bw = IS_MOBILE ? 60 : (touch ? 90 : 80);
+    const bh = IS_MOBILE ? 42 : (touch ? 36 : 24);
+    // Mobile: slot 7 → centre 624. Desktop: unchanged.
+    const cx = IS_MOBILE ? 624 : ((touch ? 800 : 790) + MAP_OFFSET_X);
     const cy = BOTTOM_BAR_Y;
     const cont = this.add.container(cx, cy).setDepth(100);
 
@@ -2196,9 +2263,10 @@ export class GameScene extends Phaser.Scene {
   // ---- Troop UI & Rendering ----
   private createTroopButton(): void {
     const touch = this.isTouch();
-    const btnW = touch ? 110 : 100;
-    const btnH = touch ? 36 : 30;
-    const btnX = MAP_OFFSET_X + 70;
+    const btnW = IS_MOBILE ? 60 : (touch ? 110 : 100);
+    const btnH = IS_MOBILE ? 42 : (touch ? 36 : 30);
+    // Mobile: 2nd slot (centre x=144). Desktop: left of tower buttons.
+    const btnX = IS_MOBILE ? 144 : MAP_OFFSET_X + 70;
     const btnY = BOTTOM_BAR_Y;
     const container = this.add.container(btnX, btnY).setDepth(100);
 
@@ -2210,7 +2278,7 @@ export class GameScene extends Phaser.Scene {
     container.add(bg);
 
     const txt = this.add.text(0, 0, '⚔ Tropas', {
-      fontSize: touch ? '12px' : '11px', color: '#b8d4b8', fontFamily: 'monospace',
+      fontSize: IS_MOBILE ? '14px' : (touch ? '12px' : '11px'), color: '#b8d4b8', fontFamily: 'monospace',
     }).setOrigin(0.5);
     container.add(txt);
 
@@ -2229,8 +2297,16 @@ export class GameScene extends Phaser.Scene {
     hitArea.on('pointerdown', () => {
       if (this.menuPanel.isVisible()) return;
       this.playSfx('sfx_click');
-      if (this.troopDropdownContainer) {
+      if (IS_MOBILE && this.troopSidePanel.isMobileOpen()) {
+        // Second tap: close active panel
+        this.troopSidePanel.hideMobile();
+      } else if (this.troopDropdownContainer) {
+        // Close placement dropdown; on mobile also open active troops view
         this.hideTroopDropdown();
+        if (IS_MOBILE) this.troopSidePanel.showMobile();
+      } else if (IS_MOBILE && !this.troopSidePanel.isMobileOpen()) {
+        // First tap on mobile: show placement dropdown
+        this.showTroopDropdown();
       } else {
         this.showTroopDropdown();
       }
@@ -2238,6 +2314,59 @@ export class GameScene extends Phaser.Scene {
     container.add(hitArea);
     this.bottomBarContainers.push(container);
   }
+
+  // ── Mobile-only: delete/sell mode button (slot 8, centre x=830) ──────────────
+  private createDeleteModeButton(): void {
+    const bw = 60;
+    const bh = 42;
+    // Slot 9 → centre 816
+    const cx = 816;
+    const cy = BOTTOM_BAR_Y;
+
+    const cont = this.add.container(cx, cy).setDepth(100);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x331111, 0.9);
+    bg.fillRect(-bw / 2, -bh / 2, bw, bh);
+    cont.add(bg);
+
+    this.deleteModeText = this.add.text(0, 0, '🗑 Borrar', {
+      fontSize: '13px', color: '#cc6666', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    cont.add(this.deleteModeText);
+
+    const border = this.add.graphics();
+    cont.add(border);
+
+    const hit = this.add.rectangle(0, 0, bw, bh).setInteractive().setAlpha(0.01);
+    hit.on('pointerdown', () => {
+      this.playSfx('sfx_click');
+      this.deleteMode = !this.deleteMode;
+      bg.clear();
+      bg.fillStyle(this.deleteMode ? 0x661111 : 0x331111, 0.9);
+      bg.fillRect(-bw / 2, -bh / 2, bw, bh);
+      if (this.deleteMode) {
+        border.clear();
+        border.lineStyle(2, 0xff4444);
+        border.strokeRect(-bw / 2, -bh / 2, bw, bh);
+        this.deleteModeText?.setColor('#ff4444');
+      } else {
+        border.clear();
+        this.deleteModeText?.setColor('#cc6666');
+      }
+      // Cancel tower/troop selection when entering delete mode
+      if (this.deleteMode) {
+        this.selectedTowerIndex = -1;
+        this.selectedCharacterId = null;
+        this.updateTowerButtonHighlights();
+        this.hideTroopDropdown();
+      }
+    });
+    cont.add(hit);
+    this.bottomBarContainers.push(cont);
+  }
+
+  // ── Mobile-only: "ver tropas activas" button, shows TroopSidePanel sheet ─────
 
   private showTroopDropdown(): void {
     this.hideTroopDropdown();

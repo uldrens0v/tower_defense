@@ -1,15 +1,25 @@
 import Phaser from 'phaser';
-import { MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT } from '../core/Constants';
+import { MAP_OFFSET_X, MAP_OFFSET_Y, MAP_HEIGHT, GAME_WIDTH, IS_MOBILE } from '../core/Constants';
 import type { TroopInstance } from '../systems/combat/TroopSystem';
 
-const PANEL_W = MAP_OFFSET_X - 4;
-const PANEL_X = 2;
-const PANEL_Y = MAP_OFFSET_Y;
-const PANEL_H = MAP_HEIGHT;
-const CELL_SIZE = 52;
-const COLS = 3;
-const PADDING = 6;
-const BAR_H = 5;
+// ── Desktop constants (left panel) ────────────────────────────────────────────
+const PANEL_W  = MAP_OFFSET_X - 4;
+const PANEL_X  = 2;
+const PANEL_Y  = MAP_OFFSET_Y;
+const PANEL_H  = MAP_HEIGHT;
+
+// ── Mobile constants (floating bottom-sheet) ──────────────────────────────────
+const M_SHEET_H   = 168;                               // sheet height
+const M_SHEET_Y   = MAP_OFFSET_Y + MAP_HEIGHT - M_SHEET_H; // bottom of map
+const M_COLS      = 6;
+const M_CELL      = 44;
+const M_PAD       = 6;
+
+// ── Shared ────────────────────────────────────────────────────────────────────
+const CELL_SIZE = IS_MOBILE ? M_CELL : 52;
+const COLS      = IS_MOBILE ? M_COLS : 3;
+const PADDING   = IS_MOBILE ? M_PAD  : 6;
+const BAR_H     = 5;
 
 export class TroopSidePanel {
   private scene: Phaser.Scene;
@@ -19,25 +29,79 @@ export class TroopSidePanel {
   private highlightTimer: Phaser.Time.TimerEvent | null = null;
   private ultChargeCost = 30;
   private bg: Phaser.GameObjects.Graphics;
+  private mobileOpen = false;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.container = scene.add.container(0, 0).setDepth(99);
 
-    // Panel background
     this.bg = scene.add.graphics();
+    this.container.add(this.bg);
+
+    if (IS_MOBILE) {
+      this.buildMobileSheet();
+      this.container.setVisible(false); // hidden by default on mobile
+    } else {
+      this.buildDesktopPanel();
+    }
+  }
+
+  // ── Desktop: left side panel ─────────────────────────────────────────────────
+  private buildDesktopPanel(): void {
     this.bg.fillStyle(0x0d0d1a, 0.85);
     this.bg.fillRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H);
     this.bg.lineStyle(1, 0x333355);
     this.bg.strokeRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H);
-    this.container.add(this.bg);
 
-    // Title
-    const title = scene.add.text(PANEL_X + PANEL_W / 2, PANEL_Y + 8, 'TROPAS', {
+    const title = this.scene.add.text(PANEL_X + PANEL_W / 2, PANEL_Y + 8, 'TROPAS', {
       fontSize: '10px', color: '#8888aa', fontFamily: 'monospace', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
     this.container.add(title);
   }
+
+  // ── Mobile: floating bottom sheet ────────────────────────────────────────────
+  private buildMobileSheet(): void {
+    const sheetW = GAME_WIDTH;
+
+    this.bg.fillStyle(0x0d0d1a, 0.95);
+    this.bg.fillRect(0, M_SHEET_Y, sheetW, M_SHEET_H);
+    this.bg.lineStyle(1, 0x444466);
+    this.bg.strokeRect(0, M_SHEET_Y, sheetW, M_SHEET_H);
+
+    const title = this.scene.add.text(sheetW / 2, M_SHEET_Y + 6, 'TROPAS ACTIVAS', {
+      fontSize: '10px', color: '#8888aa', fontFamily: 'monospace', fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+    this.container.add(title);
+
+    // Close button
+    const closeBtn = this.scene.add.text(sheetW - 14, M_SHEET_Y + 6, '✕', {
+      fontSize: '12px', color: '#886666', fontFamily: 'monospace',
+    }).setOrigin(1, 0).setInteractive();
+    closeBtn.on('pointerdown', () => this.hideMobile());
+    this.container.add(closeBtn);
+  }
+
+  /** Toggle the mobile floating panel */
+  toggleMobile(): void {
+    if (this.mobileOpen) {
+      this.hideMobile();
+    } else {
+      this.showMobile();
+    }
+  }
+
+  showMobile(): void {
+    this.mobileOpen = true;
+    this.container.setVisible(true);
+    this.container.setDepth(200); // above map
+  }
+
+  hideMobile(): void {
+    this.mobileOpen = false;
+    this.container.setVisible(false);
+  }
+
+  isMobileOpen(): boolean { return this.mobileOpen; }
 
   setUltChargeCost(cost: number): void {
     this.ultChargeCost = cost;
@@ -52,14 +116,18 @@ export class TroopSidePanel {
       }
     }
 
-    const startY = PANEL_Y + 24;
+    const startY = IS_MOBILE
+      ? M_SHEET_Y + 22
+      : PANEL_Y + 24;
+    const startX = IS_MOBILE
+      ? (GAME_WIDTH - COLS * (CELL_SIZE + PADDING) + PADDING) / 2
+      : PANEL_X + (PANEL_W - COLS * (CELL_SIZE + PADDING) + PADDING) / 2;
     const cellTotal = CELL_SIZE + PADDING;
-    const gridStartX = PANEL_X + (PANEL_W - COLS * cellTotal + PADDING) / 2;
 
     troops.forEach((troop, i) => {
       const col = i % COLS;
       const row = Math.floor(i / COLS);
-      const cx = gridStartX + col * cellTotal + CELL_SIZE / 2;
+      const cx = startX + col * cellTotal + CELL_SIZE / 2;
       const cy = startY + row * cellTotal + CELL_SIZE / 2;
 
       let cell = this.cellContainers.get(troop.id);
@@ -68,25 +136,24 @@ export class TroopSidePanel {
         this.cellContainers.set(troop.id, cell);
       }
 
-      // Update position
       cell.setPosition(cx, cy);
 
-      // Update ult charge bar
       const ultData = ultCharges.get(troop.id);
       const charge = ultData?.charge ?? troop.ultimateCharge;
       const pct = Math.min(charge / this.ultChargeCost, 1);
       const active = ultData?.active ?? troop.ultimateActive;
       this.updateCellBar(cell, pct, active);
 
-      // Update state indicator (active = attacking)
       const isActive = troop.state === 'attacking' || troop.state === 'patrol';
       this.updateCellState(cell, isActive);
     });
 
-    // Show/hide empty state
+    // Empty state
     if (troops.length === 0) {
       if (!this.container.getData('emptyText')) {
-        const emptyText = this.scene.add.text(PANEL_X + PANEL_W / 2, PANEL_Y + PANEL_H / 2, 'Sin tropas\ncolocadas', {
+        const emptyY = IS_MOBILE ? M_SHEET_Y + M_SHEET_H / 2 : PANEL_Y + PANEL_H / 2;
+        const emptyX = IS_MOBILE ? GAME_WIDTH / 2 : PANEL_X + PANEL_W / 2;
+        const emptyText = this.scene.add.text(emptyX, emptyY, 'Sin tropas\ncolocadas', {
           fontSize: '10px', color: '#555566', fontFamily: 'monospace', align: 'center',
         }).setOrigin(0.5);
         this.container.add(emptyText);
@@ -104,7 +171,6 @@ export class TroopSidePanel {
   private createTroopCell(troop: TroopInstance, _cx: number, _cy: number): Phaser.GameObjects.Container {
     const cell = this.scene.add.container(0, 0).setDepth(100);
 
-    // Cell background
     const bg = this.scene.add.graphics();
     const rarityColor = this.getRarityColor(troop.character.data.rarity);
     bg.fillStyle(0x1a1a2e, 0.9);
@@ -114,40 +180,33 @@ export class TroopSidePanel {
     cell.add(bg);
     cell.setData('bg', bg);
 
-    // Troop sprite
     const charId = troop.character.data.id;
-    const spriteKey = this.scene.textures.exists(charId)
-      ? charId : 'character-placeholder';
-    const sprite = this.scene.add.sprite(0, -4, spriteKey).setScale(0.8);
+    const spriteKey = this.scene.textures.exists(charId) ? charId : 'character-placeholder';
+    const sprite = this.scene.add.sprite(0, -4, spriteKey).setScale(IS_MOBILE ? 0.65 : 0.8);
     if (this.scene.anims.exists(charId + '_idle')) {
       sprite.play(charId + '_idle');
     }
     cell.add(sprite);
 
-    // Name label (truncated)
     const name = troop.character.data.name.slice(0, 5);
     const nameText = this.scene.add.text(0, -CELL_SIZE / 2 + 2, name, {
       fontSize: '7px', color: '#aaaacc', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
     cell.add(nameText);
 
-    // Ult charge bar background
     const barBg = this.scene.add.graphics();
     barBg.fillStyle(0x222233);
     barBg.fillRect(-CELL_SIZE / 2 + 2, CELL_SIZE / 2 - BAR_H - 2, CELL_SIZE - 4, BAR_H);
     cell.add(barBg);
 
-    // Ult charge bar fill
     const barFill = this.scene.add.graphics();
     cell.add(barFill);
     cell.setData('barFill', barFill);
 
-    // HP bar (thin, above ult bar)
     const hpBar = this.scene.add.graphics();
     cell.add(hpBar);
     cell.setData('hpBar', hpBar);
 
-    // Interactive — hover to highlight troop on map
     const hitArea = this.scene.add.rectangle(0, 0, CELL_SIZE, CELL_SIZE).setInteractive().setAlpha(0.01);
     hitArea.on('pointerover', () => {
       bg.clear();
@@ -180,7 +239,6 @@ export class TroopSidePanel {
     const barY = CELL_SIZE / 2 - BAR_H - 2;
 
     if (active) {
-      // Glowing gold when active
       barFill.fillStyle(0xffdd44);
       barFill.fillRect(barX, barY, barW, BAR_H);
     } else {
@@ -195,7 +253,6 @@ export class TroopSidePanel {
     if (!stateGfx) return;
     stateGfx.clear();
 
-    // Small state indicator dot
     const dotX = CELL_SIZE / 2 - 6;
     const dotY = -CELL_SIZE / 2 + 6;
     const color = isActive ? 0xff4444 : 0x44cc44;
@@ -211,29 +268,23 @@ export class TroopSidePanel {
 
     this.highlightArrow = this.scene.add.container(wx, wy - 40).setDepth(300);
 
-    // Purple arrow pointing down
     const arrow = this.scene.add.graphics();
     arrow.fillStyle(0xaa44ff, 0.9);
-    // Arrow body
     arrow.fillRect(-3, -16, 6, 16);
-    // Arrow head
     arrow.fillTriangle(-8, 0, 8, 0, 0, 10);
     this.highlightArrow.add(arrow);
 
-    // Glow ring around troop
     const ring = this.scene.add.graphics();
     ring.lineStyle(2, 0xaa44ff, 0.8);
     ring.strokeCircle(0, 40, 18);
     this.highlightArrow.add(ring);
 
-    // Label
     const label = this.scene.add.text(0, -22, troop.character.data.name, {
       fontSize: '9px', color: '#cc88ff', fontFamily: 'monospace',
       backgroundColor: '#1a0a2e', padding: { x: 4, y: 2 },
     }).setOrigin(0.5, 1);
     this.highlightArrow.add(label);
 
-    // Bobbing animation
     this.scene.tweens.add({
       targets: this.highlightArrow,
       y: wy - 46,
@@ -243,7 +294,6 @@ export class TroopSidePanel {
       ease: 'Sine.easeInOut',
     });
 
-    // Auto-remove after 2 seconds
     this.highlightTimer = this.scene.time.delayedCall(2000, () => {
       this.clearHighlight();
     });
@@ -263,10 +313,10 @@ export class TroopSidePanel {
   private getRarityColor(rarity: string): number {
     switch (rarity) {
       case 'legendary': return 0xffaa00;
-      case 'epic': return 0xaa44ff;
-      case 'rare': return 0x4488ff;
-      case 'uncommon': return 0x44cc44;
-      default: return 0x888888;
+      case 'epic':      return 0xaa44ff;
+      case 'rare':      return 0x4488ff;
+      case 'uncommon':  return 0x44cc44;
+      default:          return 0x888888;
     }
   }
 
@@ -276,6 +326,7 @@ export class TroopSidePanel {
   }
 
   show(): void {
+    if (IS_MOBILE) return; // mobile uses showMobile() explicitly
     this.container.setVisible(true);
   }
 
@@ -286,12 +337,12 @@ export class TroopSidePanel {
       cell.destroy();
     }
     this.cellContainers.clear();
-    // Remove empty text if present
     const emptyText = this.container.getData('emptyText') as Phaser.GameObjects.Text | undefined;
     if (emptyText) {
       emptyText.destroy();
       this.container.setData('emptyText', undefined);
     }
+    if (IS_MOBILE) this.hideMobile();
   }
 
   destroy(): void {
