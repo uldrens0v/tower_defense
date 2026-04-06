@@ -21,7 +21,7 @@ npm run open:android
 ## Estructura del proyecto
 
 ```text
-/home/runner/work/tower_defense/tower_defense
+.
 ├── src/
 │   ├── main.ts                    # Entrada del juego y ajustes mobile/fullscreen
 │   ├── core/
@@ -37,7 +37,7 @@ npm run open:android
 │   │   ├── PreloadScene.ts        # Pantalla de carga
 │   │   └── GameScene.ts           # Escena principal y orquestación del juego
 │   ├── entities/
-│   │   ├── towers/TowerEntity.ts          # Datos de torres y reglas de target
+│   │   ├── towers/TowerEntity.ts          # Datos de torres y reglas de objetivo
 │   │   ├── enemies/EnemyData.ts            # Datos/instancias de enemigos
 │   │   └── characters/
 │   │       ├── CharacterData.ts            # Personajes, stats, XP y definitiva
@@ -75,13 +75,13 @@ npm run open:android
 
 ## Lógica del juego
 
-## 1) Flujo de ejecución
+### 1) Flujo de ejecución
 
 1. `src/main.ts` crea el juego Phaser con `gameConfig`.
 2. Escenas en orden: `BootScene` → `PreloadScene` → `GameScene`.
 3. `GameScene` inicializa sistemas, carga datos JSON y maneja el loop principal.
 
-## 2) Estados principales de la partida
+### 2) Estados principales de la partida
 
 En `GameScene` se usa una máquina de estados:
 
@@ -92,7 +92,7 @@ En `GameScene` se usa una máquina de estados:
 - `victory`
 - `game_over`
 
-## 3) Mapa y olas
+### 3) Mapa y olas
 
 - El mapa es un grid (`GridMap`) con tiles (`path`, `buildable`, `wall`, etc.).
 - El path de enemigos se calcula con A* (`findPath`).
@@ -102,7 +102,7 @@ En `GameScene` se usa una máquina de estados:
   - `exitPoint`
   - lista de `waves` (qué enemigos salen y tiempos de spawn)
 
-## 4) Combate torre vs enemigo
+### 4) Combate torre vs enemigo
 
 ### Torres (`DefenseSystem` + `TowerEntity`)
 
@@ -125,7 +125,7 @@ En `GameScene` se usa una máquina de estados:
 - Tienen ataque melee/ranged según `range`.
 - Acumulan carga de definitiva (`ultimateCharge`) y activan ultimates según reglas del personaje.
 
-## 5) Progresión RPG
+### 5) Progresión RPG
 
 ### Rareza (`RaritySystem`)
 
@@ -147,7 +147,7 @@ Regla especial: `unique` tiene tirada separada (1 en 1,000,000) antes del roll n
 - Emite eventos de level up y evolución visual por etapas.
 - Verifica desbloqueo de ultimate al subir de nivel.
 
-## 6) Sistema de comandante y formaciones
+### 6) Sistema de comandante y formaciones
 
 `CommanderSystem` permite activar formaciones con cooldown:
 
@@ -162,7 +162,7 @@ Cada formación:
 - reposiciona unidades
 - aplica buffs/debuffs de stats
 
-## 7) Dungeon, cofres y equipamiento
+### 7) Dungeon, cofres y equipamiento
 
 ### Dungeon (`DungeonGenerator`)
 
@@ -182,13 +182,13 @@ Tipos de cofre: `wood`, `iron`, `gold`, `crystal`, `rainbow`.
 - Permite equipar/des-equipar a personajes.
 - Comprueba progreso de requisitos para ultimate (nivel + equipamiento requerido).
 
-## 8) Persistencia y eventos
+### 8) Persistencia y eventos
 
 - `SaveSystem` persiste progreso principal en `localStorage` (`td_rpg_save`).
 - Inventario e historial de drops usan claves propias de localStorage.
 - Los sistemas se comunican mediante `EventBus` (`eventBus.emit/on`).
 
-## 9) Datos del juego (data-driven)
+### 9) Datos del juego (data-driven)
 
 Los archivos en `src/data/*.json` controlan el balance base del juego:
 
